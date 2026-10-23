@@ -1,0 +1,8 @@
+target/
+uploads/
+.env
+secret.txt
+secrets/
+.idea/
+*.iml
+*.log
