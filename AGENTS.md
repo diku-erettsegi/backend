@@ -9,7 +9,7 @@
 - Fájlnév nem útvonal. UUID, privát storage, hitelesített attachment letöltés. A DB és fájl tranzakciós eltéréseit kezeld.
 - Módosítás után releváns mvn verify és teljes stack smoke. A tesztekhez Docker kell; kihagyást ne állíts sikeres tesztnek.
 - API változáskor a frontend típusokat/űrlapokat és API.md-t együtt frissítsd. UTC Instant és Budapest LocalDateTime jelentését őrizd meg.
-- Üzemeltetési változást a database repóban dokumentálj. Éles deploy jelenleg nincs aktiválva.
+- Üzemeltetési változást a database repóban dokumentálj. 2026-10-24: az első VPS-deploy sikeres, mind a négy szolgáltatás healthy. Az automatizáció, auth- és restore-próbák aktuális állapotának forrása: ../database/docs/DEPLOY-STATUS.md. A publikus domain névszerverváltását a felhasználó későbbre halasztotta; most ne végezd el.
 - Ár: Europe/Budapest szerveróra, időszaki25/15/0 + barátonként5 százalékpont, legfeljebb35. Meghívott barát flag nem duplázhatja ugyanazt a kapcsolatot. A mentett snapshotok nem számolhatók újra; a baráti jogosultságot admin manuálisan ellenőrzi.
 - Kapacitás: csoportsorzár és READ_COMMITTED tranzakció. Csak ACCEPTED foglal helyet; minden státuszváltás ugyanazt a zárolási sorrendet használja. UUID-idempotencia és payload fingerprint maradjon meg.
 - A 2026-10-21 felhasználói döntés szerint nincs automatikus e-mail. Ne állítsd vissza SMTP/workert; az érdeklődőket admin kezeli NEW/CONTACTED/COMPLETED állapotokkal. A V2 mail_outbox történeti, nem használt tábla.

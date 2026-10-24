@@ -68,4 +68,10 @@ A programozási érdeklődők külön táblába kerülnek, az admin `NEW` → `C
 
 Migrációk: `src/main/resources/db/migration`. V1 kezdeti séma; V2 csoportok/árak/érdeklődők; V3 összeadódó kedvezmények és manuális érdeklődőállapot. V1/V2 változatlan, a következő változás V4. A V2 korábbi `mail_outbox` táblája történeti okból megmarad, de az alkalmazás már nem olvassa, írja vagy dolgozza fel; nincs kapcsolódó JPA entitás vagy worker. A V3 nem számol újra régi árajánlatokat. Hibernate `validate`; nincs automatikus sémaátírás.
 
-API szerződés: [API.md](API.md). Közös architektúra/átadás: `../database/docs`. A `main` CI tesztel, majd GHCR image-et publikál. A VPS frissítését a database repó készíti elő. Jelenleg nincs éles telepítés, e-mail-küldés, jelszó-visszaállítás, fizetés vagy a tananyagokhoz csoportonkénti hozzáférés. A csoport jelenleg jelentkezési/kapacitási adat, minden aktív diák továbbra is minden publikált órát lát.
+API szerződés: [API.md](API.md). Közös architektúra/átadás: `../database/docs`. A `main` CI tesztel, majd GHCR image-et publikál; a VPS frissítését a database repó deploy szkriptje kezeli.
+
+2026-10-24: az első Rackforest VPS-deploy sikeres, a frontend, backend, MariaDB és Cloudflare Tunnel egyaránt healthy. Az első backend GitHub Actions CI-ben 23/23 teszt sikeres. A belső Nginx → API útvonalon az adminbelépés, sessionrotáció, Secure/HttpOnly cookie, CSRF-védelem, 401/403 válaszok és kijelentkezés ellenőrzése sikeres. A bootstrap értékeket kivettük a környezetből, majd a backend újra healthy állapotba került.
+
+A publikus domain névszerverváltását a felhasználó későbbre halasztotta; most kihagyjuk. A nyilvános HTTPS-útvonal ellenőrzése ezért későbbi lépés. Az automatizáció és az auth-/restore-próbák aktuális, ellenőrzött állapotának mindig a [DEPLOY-STATUS](../database/docs/DEPLOY-STATUS.md) az irányadó forrása.
+
+Nincs e-mail-küldés, jelszó-visszaállítás, fizetés vagy a tananyagokhoz csoportonkénti hozzáférés. A csoport jelenleg jelentkezési/kapacitási adat, minden aktív diák továbbra is minden publikált órát lát.
