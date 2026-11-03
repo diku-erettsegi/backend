@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -14,6 +16,10 @@ class Course {
     @Column(nullable=false,length=120) String name;
     // Wall-clock course values must bypass java.sql.Time + the UTC calendar used for Instant fields.
     @JdbcTypeCode(SqlTypes.LOCAL_DATE) @Column(nullable=false) LocalDate startDate;
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE) LocalDate endDate;
+    @ElementCollection @CollectionTable(name="course_dates",joinColumns=@JoinColumn(name="course_id"))
+    @OrderColumn(name="session_order") @Column(name="session_date",nullable=false)
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE) List<LocalDate> sessionDates=new ArrayList<>();
     @JdbcTypeCode(SqlTypes.LOCAL_TIME) @Column(nullable=false) LocalTime startTime;
     @JdbcTypeCode(SqlTypes.LOCAL_TIME) @Column(nullable=false) LocalTime endTime;
     @Column(nullable=false) int sessions;
@@ -23,6 +29,7 @@ class Course {
     @Column(nullable=false) int baseTotal;
     Long getId() { return id; }
     String getName() { return name; }
+    LocalDate getEndDate() { return endDate; }
 }
 
 @Entity @Table(name="programming_interests")

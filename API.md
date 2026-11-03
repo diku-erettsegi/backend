@@ -1,5 +1,23 @@
 # API szerződés – csoportok, összevont kedvezmények és manuális érdeklődőkezelés
 
+## 2026-11-03 – V4 szerződés (az alábbi októberi leírás módosításai)
+
+- Új jelentkezés: `ageGroup: ADULT | MINOR_14_17` kötelező. Kiskorúnál `parentName` és `guardianConfirmed:true` kell. `waitlistRequested:true` kifejezett várólista-kérés, csak betelt csoportnál kerül `WAITLISTED` állapotba. Korábbi azonos idempotens kérés az új mezők nélkül is visszaolvasható.
+- Course kiegészítés: `waitlistCapacity`, `waitlistCount`, `availableWaitlistSeats`, `waitlistOpen`, `registrationClosesOn`, `endDate`, `acceptingApplications` (nyers admin kapcsoló), `sessionDates` (ISO dátumtömb). `registrationOpen` a tényleges szabad helyet és indulás+14 nap határidőt is figyelembe veszi. Betelt csoporthoz legfeljebb 5 várólistás; státuszváltás is zárolt.
+- Receipt kiegészítés: `status`, `baseTotal`, `laptopRentalFee`. Új laptopigény 30000 Ft a teljes képzésre, nélküle 0, régi rekordnál null. `quotedTotal` továbbra is kizárólag képzési ajánlat, a bérlet külön hozzáadandó. Az ajánlat feltételes, nem fizetési visszaigazolás.
+- Application kiegészítés: `ageGroup`, `guardianConfirmed`, `finance`. Finance: `{contractConfirmed,paidTrainingTotal,fullPaymentDate,verifiedFriendCount,discountPercent,periodDiscountPercent,trainingTotal,laptopRentalFee,trainingBalance}`. Régi alapdíj nélküli rekordnál az összeg és egyenleg null.
+- `PUT /admin/applications/{id}/finance`: `{contractConfirmed,paidTrainingTotal,fullPaymentDate?,verifiedFriendCount}`. Összeg egész forint 0–10000000; igazolt barát 0–10. A teljes befizetési dátum jelentkezés és mai Budapest nap között, csak a teljes számított díj beérkezésekor. A korai kedvezményt a beküldési és teljes befizetési dátum együtt határozza meg. Befizetett barátokat admin igazolja; plafon 35%. Minden mentés auditált. A történeti quote változatlan.
+- `PATCH /admin/applications/{id}`: új ACCEPTED státusz előtt szerződésigazolás és pozitív képzési befizetés szükséges. Részletfizetés elfogadható. Már elfogadott rekordnál pénzügyi igazolás visszavonásához előbb státuszváltás kell.
+- `PUT /admin/applications/{id}/course`: `{courseId,swapApplicationId?}`. Szabad célhely vagy két elfogadott jelentkezés atomikus helycseréje. Növekvő csoport- és alkalmazássorzárak. Eredeti beküldési idő/ár változatlan; kapcsolt fiók hozzáférése az új csoportot követi.
+- `PUT /admin/courses/{id}`: `{sessionDates:[20 növekvő ISO dátum],registrationOpen:boolean}`. Első dátum = eredeti indulás, utolsó = endDate. Az admin kapcsolót az `acceptingApplications` mezőből töltsd vissza, ne a telítettségfüggő `registrationOpen` értékből.
+- LessonInput: új `courseId`, közzétételhez kötelező. Lesson válasz: `courseId`, `courseName`. Régi csoport nélküli órák csak adminnak láthatók. `/lessons` diáknál csak saját csoport, elfogadott jelentkezés és aktív hozzáférés mellett ad publikált órákat. Admin tanulói nézetben minden publikált órát láthat.
+- `GET /access`: saját `{userId,applicationId,courseId,courseName,expiresOn,active}`. `GET /admin/enrollments`: azonos DTO-k listája.
+- `PUT /admin/users/{id}/enrollment`: `{applicationId}`; csak STUDENT fiók + elfogadott jelentkezés + ismert kurzusvég. Egy jelentkezés egy fiókhoz. `DELETE` ugyanitt 204, visszavonás. Mindkettő érvényteleníti a régi sessiont és auditált.
+- `GET /files/{id}/download`: a fenti csoport/státusz/lejárat ellenőrzés minden letöltésen is megtörténik. Nem jogosultnak 404, nem adat- vagy fájlnévszivárgás. Admin olvashat piszkozatot is. Lejárat: kurzus vége + 1 hónap, az utolsó nap végéig Europe/Budapest szerint.
+
+Minden új admin végpont ADMIN + CSRF védett. Nincs automatikus fizetés, számlázás vagy e-mail. Csoport, pénzügy és hozzáférés módosítása auditált. Részletes üzleti döntések: [novemberi válaszok](../database/docs/LAUNCH-ANSWERS-2026-11.md).
+
+
 Állapot: 2026-10-21. Minden végpont `/api` alatt, JSON UTF-8. Nincs `/v1` prefix. A csoportválasztás bevezetése miatt a jelentkezés POST új kötelező mezőket kapott: a frontend és backend kiadása összehangolandó. Ugyanazon origin, session cookie (`JSESSIONID`), állapotmódosításkor CSRF fejléc. Minden API válasz `no-store`.
 
 1. `GET /auth/csrf` → `{token,headerName}`; a cookie-t őrizd meg.

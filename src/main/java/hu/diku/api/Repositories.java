@@ -10,6 +10,9 @@ import org.springframework.data.jpa.repository.Query;
 interface AccountRepository extends JpaRepository<Account, Long> {
     Optional<Account> findByEmailIgnoreCase(String email);
     List<Account> findAllByOrderByNameAsc();
+    Optional<Account> findByApplicationId(Long applicationId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from Account a where a.id = :id") Optional<Account> lockById(long id);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Account a where a.role = hu.diku.api.Role.ADMIN and a.enabled = true")
     List<Account> lockEnabledAdmins();

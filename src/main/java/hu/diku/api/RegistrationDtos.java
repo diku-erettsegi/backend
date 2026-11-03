@@ -5,17 +5,23 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
+import java.util.List;
 
 final class RegistrationDtos {
     private RegistrationDtos() {}
     record PriceDto(int baseTotal, int discountPercent, int periodDiscountPercent, int friendDiscountPercent,
         String discountLabel, int total, int perLesson, LocalDate validUntil) {}
     record CourseDto(Long id, String slug, String name, LocalDate startDate, LocalTime startTime, LocalTime endTime,
-        int sessions, int lessonsPerSession, int capacity, long acceptedCount, long availableSeats, boolean registrationOpen, PriceDto price) {}
+        int sessions, int lessonsPerSession, int capacity, long acceptedCount, long availableSeats, boolean registrationOpen, PriceDto price,
+        int waitlistCapacity, long waitlistCount, long availableWaitlistSeats, boolean waitlistOpen, LocalDate registrationClosesOn, LocalDate endDate, boolean acceptingApplications, List<LocalDate> sessionDates) {}
+    record CourseUpdate(@NotNull @Size(min=20,max=20) List<@NotNull LocalDate> sessionDates, @NotNull Boolean registrationOpen) {}
+    record FinanceUpdate(@NotNull Boolean contractConfirmed, @Min(0) @Max(10000000) int paidTrainingTotal, LocalDate fullPaymentDate, @Min(0) @Max(10) int verifiedFriendCount) {}
+    record CourseTransfer(@NotNull @Positive Long courseId, @Positive Long swapApplicationId) {}
     record ApplicationReceipt(Long id, String message, String courseName, Integer quotedTotal, Integer quotedPerLesson,
-        String discountLabel, Integer discountPercent, Integer periodDiscountPercent, Integer friendDiscountPercent) {
+        String discountLabel, Integer discountPercent, Integer periodDiscountPercent, Integer friendDiscountPercent,
+        ApplicationStatus status, Integer baseTotal, Integer laptopRentalFee) {
         static ApplicationReceipt of(ApiDtos.ApplicationDto a) {
-            return new ApplicationReceipt(a.id(),"A jelentkezésed megérkezett.",a.courseName(),a.quotedTotal(),a.quotedPerLesson(),a.discountLabel(),a.discountPercent(),a.periodDiscountPercent(),a.friendDiscountPercent());
+            return new ApplicationReceipt(a.id(),a.status()==ApplicationStatus.WAITLISTED?"A várólistás jelentkezésed megérkezett.":"A jelentkezésed megérkezett.",a.courseName(),a.quotedTotal(),a.quotedPerLesson(),a.discountLabel(),a.discountPercent(),a.periodDiscountPercent(),a.friendDiscountPercent(),a.status(),a.baseTotal(),a.finance().laptopRentalFee());
         }
     }
     record InterestRequest(@NotBlank @Size(max=120) String name, @NotBlank @Email @Size(max=254) String email,

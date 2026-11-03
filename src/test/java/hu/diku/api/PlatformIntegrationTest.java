@@ -31,6 +31,7 @@ class PlatformIntegrationTest {
     }
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     MockHttpSession login(String email,String password) throws Exception {
         return (MockHttpSession)mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json")
             .content(json.writeValueAsString(Map.of("email",email,"password",password))))
@@ -43,7 +44,7 @@ class PlatformIntegrationTest {
         mvc.perform(get("/api/admin/applications")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andExpect(jsonPath("$.token").isNotEmpty());
         String body=json.writeValueAsString(Map.of("studentName","Teszt diák","email","test@example.com","phone","+36 30 111 1111","privacyAccepted",true,
-            "courseId",1,"requestId",UUID.randomUUID().toString(),"friendCount",0,"laptopRentalRequested",false));
+            "courseId",1,"requestId",UUID.randomUUID().toString(),"friendCount",0,"laptopRentalRequested",false,"ageGroup","ADULT"));
         mvc.perform(post("/api/applications").contentType("application/json").content(body)).andExpect(status().isForbidden());
         mvc.perform(post("/api/applications").with(csrf()).contentType("application/json").content(body.replace("true","false"))).andExpect(status().isBadRequest());
         var response=mvc.perform(post("/api/applications").with(csrf()).contentType("application/json").content(body)).andExpect(status().isCreated()).andReturn();
@@ -54,9 +55,12 @@ class PlatformIntegrationTest {
         mvc.perform(get("/api/admin/audit").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$[0].action").exists());
     }
     @Test void draftFilesAreProtectedAndPublishedFilesDownload() throws Exception {
-        var admin=admin(); var student=login("diak@diku.local","DikuDiak2026!");
+        var admin=admin();
+        jdbc.update("INSERT INTO applications(student_name,email,phone,status,privacy_accepted_at,privacy_version,created_at,course_id) VALUES ('Access test','access@example.test','123','ACCEPTED',NOW(),'test',NOW(),1)");
+        jdbc.update("UPDATE users SET application_id=(SELECT MAX(id) FROM applications) WHERE email='diak@diku.local'");
+        var student=login("diak@diku.local","DikuDiak2026!");
         mvc.perform(get("/api/admin/users").session(student)).andExpect(status().isForbidden());
-        String lesson="{\"title\":\"Minta tesztóra\",\"description\":\"Teszt\",\"startsAt\":\"2026-11-01T15:00:00\",\"published\":false}";
+        String lesson="{\"title\":\"Minta tesztóra\",\"description\":\"Teszt\",\"startsAt\":\"2026-11-01T15:00:00\",\"published\":false,\"courseId\":1}";
         long id=parse(mvc.perform(post("/api/admin/lessons").session(admin).with(csrf()).contentType("application/json").content(lesson)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asLong();
         var upload=new MockMultipartFile("file","../minta.txt","text/plain","hello diku".getBytes());
         long fileId=parse(mvc.perform(multipart("/api/admin/lessons/"+id+"/files").file(upload).session(admin).with(csrf())).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asLong();

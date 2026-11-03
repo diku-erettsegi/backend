@@ -1,6 +1,14 @@
 # DIKU Spring Boot API
 
+## Novemberi működés – V4
+
+Várólista (5 fő), kiskorú jelentkező szülői nyilatkozata, 20 dátumos szerkeszthető naptár, manuális szerződés/befizetés-igazolás, helycsere és csoporthoz kötött tananyag-hozzáférés. A tanuló csak saját elfogadott jelentkezésének csoportját láthatja a kurzus végét követő egy hónapig; közvetlen letöltés is ellenőrzött. Az eredeti díjajánlat változatlan; a teljes határidős befizetéshez és fizető barátokhoz kötött igazolt díj külön szerepel. API-részletek: API.md. A korábbi általános diákláthatóságot ez felülírja.
+
+Az alábbi dátumozott leírások a korábbi állapot történetét is tartalmazzák.
+
 Java 21 · Spring Boot 3.5.16 · Spring Security · JPA · Flyway · MariaDB 11.4. A három klón közül ez kezeli a csoportokat, jelentkezéseket és rögzített árakat, manuális programozási érdeklődéseket, felhasználókat, órákat, privát fájlokat és audit eseményeket.
+
+2026-11-03 ellenőrzés: `mvn verify` Dockerben, valódi Testcontainers MariaDB 11.4-en: 29 teszt, 0 hiba, 0 kihagyás. V1/V2→V4 megőrzés, fizetési határidő, kiskorú, 5 fős párhuzamos várólista, csoportcsere és fájl/lejárat tesztelve. Teljes helyi Nginx→API→DB smoke is sikeres.
 
 ## Futtatás
 
@@ -46,7 +54,7 @@ Bootstrap: valós e-mail, név, legalább 12 karakteres, legfeljebb 72 UTF-8 bá
 
 Session cookie + CSRF védelem; a jelentkezéshez is CSRF token szükséges. A frontend `/api` proxyt használ. Belépéskor sessionazonosító és token váltás történik. Letiltás, e-mail-, jelszó- vagy szerepkörmódosítás után a régi session következő kérésre érvénytelen. Az utolsó aktív admin nem tiltható le vagy fokozható le. Jelszavak BCrypt hashként tárolódnak. A session egy backend példány memóriájában él; újraindítás után új belépés kell.
 
-Minden aktív diák minden közzétett órát lát. A jelentkezésből nem lesz automatikusan fiók. A fájlok UUID kulccsal, webrooton kívül tárolódnak; a letöltés jogosultságvizsgálatot és attachment/nosniff választ kap. A rendszer nem futtatja és nem csomagolja ki a tananyagot. A fájl és metaadat törlése tranzakcióhoz igazodik; sikertelen fizikai törlésnél elérhetetlen maradványfájl lehetséges, amire a log figyelmeztet.
+A diák csak elfogadott jelentkezéséhez rendelt csoportjának közzétett óráit látja, a kurzus végét követő egy hónapig. A jelentkezésből nem lesz automatikusan fiók. A fájlok UUID kulccsal, webrooton kívül tárolódnak; a letöltés jogosultságvizsgálatot és attachment/nosniff választ kap. A rendszer nem futtatja és nem csomagolja ki a tananyagot. A fájl és metaadat törlése tranzakcióhoz igazodik; sikertelen fizikai törlésnél elérhetetlen maradványfájl lehetséges, amire a log figyelmeztet.
 
 Az alkalmazás memóriaalapú, egy példányos korlátozása: legfeljebb 8 sikertelen belépési kísérlet / 10 perc / IP, sikeres belépés törli a számlálót; jelentkezés 10 / óra / IP. Élesben megbízható proxy és további edge védelem szükséges. A listavégpontok az első kis kurzushoz lapozás nélküliek; auditból a legutóbbi 200 látszik.
 
@@ -54,7 +62,7 @@ Az alkalmazás memóriaalapú, egy példányos korlátozása: legfeljebb 8 siker
 
 2027. január 9-én két szombati csoport indul: 09:00–13:00 és 14:00–18:00. Mindkettő 24 helyes, 20 alkalom × 4 darab 45 perces tanóra. A csoportok Flyway V2 migrációból kerülnek az adatbázisba, újraindulás nem állítja vissza őket. A 280000 Ft alapár 80 tanórára vonatkozik.
 
-A szerver Budapest szerinti dátuma adja a 25%-os (2026. november 15. nap végéig), majd 15%-os (december 15. nap végéig) időszaki kedvezményt. Ehhez barátonként 5 százalékpont adódik, összesen legfeljebb 35%. Meghívott barátként 5% jár akkor is, ha a jelentkező maga nem hoz másik barátot; ugyanazt a kapcsolatot nem számoljuk kétszer (`max(friendCount,referredByFriend?1:0)`). Példák: 25+5=30% → 196000 Ft, 25+10=35% → 182000 Ft. Az admin manuálisan ellenőrzi a baráti kapcsolatot. A szerver az időszaki/baráti/végső százalékot, árat és tanóraárat menti; későbbi státuszváltás vagy árváltozás nem írja át a snapshotot. A laptopigény nem jelent automatikus készletfoglalást vagy árazást.
+A szerver Budapest szerinti dátuma adja a 25%-os (2026. november 15. nap végéig), majd 15%-os (december 15. nap végéig) időszaki kedvezményt. Ehhez barátonként 5 százalékpont adódik, összesen legfeljebb 35%. Meghívott barátként 5% jár akkor is, ha a jelentkező maga nem hoz másik barátot; ugyanazt a kapcsolatot nem számoljuk kétszer (`max(friendCount,referredByFriend?1:0)`). Példák: 25+5=30% → 196000 Ft, 25+10=35% → 182000 Ft. Az admin manuálisan ellenőrzi a baráti kapcsolatot. A szerver az időszaki/baráti/végső százalékot, árat és tanóraárat menti; későbbi státuszváltás vagy árváltozás nem írja át a snapshotot. Új jelentkezésnél a laptopigény 30000 Ft külön mentett díj a teljes képzésre; nem automatikus készletfoglalás.
 
 Új jelentkezésnél kötelező csoportot választani. Csak `ACCEPTED` státusz foglal helyet; a 24 fős limitet párhuzamos adminműveletnél is tranzakciós csoportsorzár védi. Minden nyilvános beküldés UUID idempotenciakulcsot kér: változatlan kérés ismétlése ugyanazt az eredményt adja, megváltoztatott tartalom ugyanazzal a kulccsal 409. A régi csoport nélküli rekordok megmaradnak.
 
@@ -74,4 +82,4 @@ API szerződés: [API.md](API.md). Közös architektúra/átadás: `../database/
 
 A publikus domain névszerverváltását a felhasználó későbbre halasztotta; most kihagyjuk. A nyilvános HTTPS-útvonal ellenőrzése ezért későbbi lépés. Az automatizáció és az auth-/restore-próbák aktuális, ellenőrzött állapotának mindig a [DEPLOY-STATUS](../database/docs/DEPLOY-STATUS.md) az irányadó forrása.
 
-Nincs e-mail-küldés, jelszó-visszaállítás, fizetés vagy a tananyagokhoz csoportonkénti hozzáférés. A csoport jelenleg jelentkezési/kapacitási adat, minden aktív diák továbbra is minden publikált órát lát.
+Nincs e-mail-küldés, jelszó-visszaállítás vagy online fizetés. A V4 manuális pénzügyi igazolást és csoporthoz kötött, lejáró tananyag-hozzáférést biztosít.

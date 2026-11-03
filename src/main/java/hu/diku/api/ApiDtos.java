@@ -21,23 +21,24 @@ public final class ApiDtos {
         @Size(max=120) String parentName, @Size(max=4000) String message,
         @NotNull @AssertTrue Boolean privacyAccepted, @NotNull @Positive Long courseId,
         @NotNull UUID requestId, @NotNull @Min(0) @Max(10) Integer friendCount,
-        @Size(max=500) String referralNote, @NotNull Boolean laptopRentalRequested, Boolean referredByFriend) {}
+        @Size(max=500) String referralNote, @NotNull Boolean laptopRentalRequested, Boolean referredByFriend,
+        AgeGroup ageGroup, Boolean guardianConfirmed, Boolean waitlistRequested) {}
     public record ApplicationUpdate(@NotNull ApplicationStatus status, @Size(max=4000) String notes) {}
     public record ApplicationDto(Long id, String studentName, String email, String phone, String parentName,
         String message, ApplicationStatus status, String notes, Instant createdAt, Instant privacyAcceptedAt, String privacyVersion,
         Long courseId, String courseName, int friendCount, String referralNote, boolean laptopRentalRequested, boolean referredByFriend,
         String friendDiscountStatus, Integer baseTotal, Integer discountPercent, Integer periodDiscountPercent, Integer friendDiscountPercent,
-        String discountLabel, Integer quotedTotal, Integer quotedPerLesson) {
+        String discountLabel, Integer quotedTotal, Integer quotedPerLesson, AgeGroup ageGroup, boolean guardianConfirmed, FinancialSummary finance) {
         static ApplicationDto of(Application a) { return new ApplicationDto(a.id,a.studentName,a.email,a.phone,a.parentName,a.message,a.status,a.notes,a.createdAt,a.privacyAcceptedAt,a.privacyVersion,
             a.course==null?null:a.course.getId(),a.course==null?null:a.course.getName(),a.friendCount,a.referralNote,a.laptopRentalRequested,a.referredByFriend,
-            a.friendCount>0||a.referredByFriend?"PENDING_ADMIN":"NOT_REQUESTED",a.baseTotal,a.discountPercent,a.periodDiscountPercent,a.friendDiscountPercent,a.discountLabel,a.quotedTotal,a.quotedPerLesson); }
+            a.friendCount>0||a.referredByFriend?"PENDING_ADMIN":"NOT_REQUESTED",a.baseTotal,a.discountPercent,a.periodDiscountPercent,a.friendDiscountPercent,a.discountLabel,a.quotedTotal,a.quotedPerLesson,a.ageGroup,a.guardianConfirmed,FinancialSummary.of(a)); }
     }
     public record LessonRequest(@NotBlank @Size(max=160) String title, @Size(max=6000) String description,
-        LocalDateTime startsAt, @Size(max=2048) String meetingUrl, boolean published) {}
+        LocalDateTime startsAt, @Size(max=2048) String meetingUrl, boolean published, @Positive Long courseId) {}
     public record FileDto(Long id, String originalName, long size, String contentType) {
         static FileDto of(LessonFile f) { return new FileDto(f.id,f.originalName,f.size,f.contentType); }
     }
-    public record LessonDto(Long id, String title, String description, LocalDateTime startsAt, String meetingUrl, boolean published, List<FileDto> files) {}
+    public record LessonDto(Long id, String title, String description, LocalDateTime startsAt, String meetingUrl, boolean published, List<FileDto> files, Long courseId, String courseName) {}
     public record AuditDto(Long id, String actor, String action, String target, Instant createdAt) {
         static AuditDto of(AuditEvent e) { return new AuditDto(e.id,e.actor,e.action,e.target,e.createdAt); }
     }

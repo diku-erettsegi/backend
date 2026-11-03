@@ -19,9 +19,11 @@ class PlatformService {
     final LessonFileRepository files;
     final AuditRepository events;
     final PasswordEncoder encoder;
+    final CourseRepository courses;
+    final EnrollmentService enrollment;
     PlatformService(AccountRepository users, ApplicationRepository applications, LessonRepository lessons,
-        LessonFileRepository files, AuditRepository events, PasswordEncoder encoder) {
-        this.users=users; this.applications=applications; this.lessons=lessons; this.files=files; this.events=events; this.encoder=encoder;
+        LessonFileRepository files, AuditRepository events, PasswordEncoder encoder, CourseRepository courses, EnrollmentService enrollment) {
+        this.users=users; this.applications=applications; this.lessons=lessons; this.files=files; this.events=events; this.encoder=encoder; this.courses=courses; this.enrollment=enrollment;
     }
     static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"A kért adat nem található."); }
     static ResponseStatusException invalid(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST,message); }
@@ -29,8 +31,8 @@ class PlatformService {
     static String email(String value) { return value.strip().toLowerCase(Locale.ROOT); }
     @Transactional(readOnly=true) List<UserDto> listUsers() { return users.findAllByOrderByNameAsc().stream().map(UserDto::of).toList(); }
     @Transactional(readOnly=true) List<AuditDto> listAudit() { return events.findTop200ByOrderByCreatedAtDescIdDesc().stream().map(AuditDto::of).toList(); }
-    @Transactional(readOnly=true) List<LessonDto> listLessons(boolean admin) {
-        return (admin ? lessons.findAllByOrderByStartsAtAscIdAsc() : lessons.findByPublishedTrueOrderByStartsAtAscIdAsc()).stream().map(this::dto).toList();
+    @Transactional(readOnly=true) List<LessonDto> listLessons(boolean admin, String email) {
+        return (admin ? lessons.findAllByOrderByStartsAtAscIdAsc() : lessons.findByPublishedTrueOrderByStartsAtAscIdAsc()).stream().filter(l->admin || enrollment.canRead(l,email)).map(this::dto).toList();
     }
     static void validatePassword(String value) {
         if (value.length()<12 || value.getBytes(StandardCharsets.UTF_8).length>72)
@@ -68,7 +70,7 @@ class PlatformService {
     }
     @Transactional(readOnly=true) LessonDto dto(Lesson l) {
         return new LessonDto(l.id,l.title,l.description,l.startsAt,l.meetingUrl,l.published,
-            files.findByLessonIdOrderByIdAsc(l.id).stream().map(FileDto::of).toList());
+            files.findByLessonIdOrderByIdAsc(l.id).stream().map(FileDto::of).toList(),l.course==null?null:l.course.getId(),l.course==null?null:l.course.getName());
     }
     @Transactional LessonDto saveLesson(Long id, LessonRequest body, String actor) {
         String link=clean(body.meetingUrl());
@@ -77,6 +79,8 @@ class PlatformService {
             catch(IllegalArgumentException e) { throw invalid("Az értekezlet hivatkozása érvényes HTTPS-cím legyen."); }
         }
         var l=id==null?new Lesson():lessons.findById(id).orElseThrow(PlatformService::missing);
+        l.course=body.courseId()==null?null:courses.findById(body.courseId()).orElseThrow(PlatformService::missing);
+        if(body.published() && l.course==null) throw invalid("Közzététel előtt válassz csoportot.");
         l.title=body.title().strip(); l.description=clean(body.description()); l.startsAt=body.startsAt(); l.meetingUrl=link; l.published=body.published();
         lessons.save(l); audit(actor,id==null?"LESSON_CREATED":"LESSON_UPDATED","lesson:"+l.id); return dto(l);
     }

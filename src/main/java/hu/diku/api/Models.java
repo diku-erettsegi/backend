@@ -2,10 +2,14 @@ package hu.diku.api;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 enum Role { ADMIN, STUDENT }
-enum ApplicationStatus { NEW, CONTACTED, ACCEPTED, REJECTED }
+enum ApplicationStatus { NEW, CONTACTED, WAITLISTED, ACCEPTED, REJECTED }
+enum AgeGroup { ADULT, MINOR_14_17 }
 
 @Entity @Table(name = "users")
 class Account {
@@ -17,6 +21,7 @@ class Account {
     @Column(nullable = false) boolean enabled = true;
     @Column(nullable = false) long authVersion = 0;
     @Column(nullable = false) Instant createdAt = Instant.now();
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="application_id",unique=true) Application application;
 }
 
 @Entity @Table(name = "applications")
@@ -32,7 +37,10 @@ class Application {
     @Column(nullable = false) Instant privacyAcceptedAt = Instant.now();
     @Column(nullable = false, length = 40) String privacyVersion = "draft-2026-10";
     @Column(nullable = false, updatable = false) Instant createdAt = Instant.now();
-    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="course_id",updatable=false) Course course;
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="course_id") Course course;
+    @Enumerated(EnumType.STRING) @Column(length=20,updatable=false) AgeGroup ageGroup;
+    @Column(nullable=false,updatable=false) boolean guardianConfirmed;
+    @Column(nullable=false,updatable=false) boolean waitlistRequested;
     @Column(length=36,unique=true,updatable=false) String requestId;
     @Column(length=64,updatable=false) String requestHash;
     @Column(nullable=false,updatable=false) int friendCount;
@@ -46,6 +54,14 @@ class Application {
     @Column(length=120,updatable=false) String discountLabel;
     @Column(updatable=false) Integer quotedTotal;
     @Column(updatable=false) Integer quotedPerLesson;
+    @Column(updatable=false) Integer laptopRentalFee;
+    @Column(nullable=false) boolean contractConfirmed;
+    @Column(nullable=false) int paidTrainingTotal;
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE) LocalDate fullPaymentDate;
+    @Column(nullable=false) int verifiedFriendCount;
+    Long getId() { return id; }
+    Course getCourse() { return course; }
+    ApplicationStatus getStatus() { return status; }
 }
 
 @Entity @Table(name = "lessons")
@@ -56,8 +72,10 @@ class Lesson {
     LocalDateTime startsAt;
     @Column(length = 2048) String meetingUrl;
     @Column(nullable = false) boolean published;
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="course_id") Course course;
     @Column(nullable = false) Instant createdAt = Instant.now();
     public boolean isPublished() { return published; }
+    Course getCourse() { return course; }
 }
 
 @Entity @Table(name = "lesson_files")

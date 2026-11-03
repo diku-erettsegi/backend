@@ -19,11 +19,12 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 class FileService {
     private final PlatformService service;
+    private final EnrollmentService enrollment;
     private final Path root;
     private final LessonRepository lessons;
     private final LessonFileRepository files;
-    FileService(PlatformService service, LessonRepository lessons, LessonFileRepository files, @Value("${diku.storage-path}") String location) throws IOException {
-        this.service=service; this.lessons=lessons; this.files=files; root=Path.of(location).toAbsolutePath().normalize(); Files.createDirectories(root);
+    FileService(PlatformService service, EnrollmentService enrollment, LessonRepository lessons, LessonFileRepository files, @Value("${diku.storage-path}") String location) throws IOException {
+        this.service=service; this.enrollment=enrollment; this.lessons=lessons; this.files=files; root=Path.of(location).toAbsolutePath().normalize(); Files.createDirectories(root);
     }
     record Download(Path path, String name, long size) {}
     private Path path(String key) {
@@ -52,9 +53,9 @@ class FileService {
         service.audit(actor,"FILE_UPLOADED","file:"+item.id);
         return FileDto.of(item);
     }
-    @Transactional(readOnly=true) Download download(long id, boolean admin) {
+    @Transactional(readOnly=true) Download download(long id, String email) {
         var item=files.findById(id).orElseThrow(PlatformService::missing);
-        if(!admin && !item.lesson.isPublished()) throw PlatformService.missing();
+        if(!enrollment.canRead(item.lesson,email)) throw PlatformService.missing();
         Path stored=path(item.storageName);
         if(!Files.isRegularFile(stored,LinkOption.NOFOLLOW_LINKS)) throw PlatformService.missing();
         return new Download(stored,item.originalName,item.size);

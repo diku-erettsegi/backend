@@ -66,18 +66,103 @@ class RegistrationIntegrationTest {
     @Autowired ProgrammingInterestService interests;
     @Autowired ProgrammingInterestRepository interestRepository;
     @Autowired ApplicationRepository applications;
+    @Autowired EnrollmentService enrollment;
+    @Autowired AccountRepository users;
+    @Autowired PlatformService platform;
+    @Autowired FileService files;
 
     @BeforeEach void resetState() {
+        jdbc.update("UPDATE users SET application_id=NULL");
         jdbc.update("DELETE FROM applications WHERE request_id IS NOT NULL");
         jdbc.update("UPDATE courses SET capacity=24, registration_open=TRUE");
         jdbc.update("DELETE FROM mail_outbox"); jdbc.update("DELETE FROM programming_interests");
         clock.set("2026-10-20T10:00:00Z");
     }
     ApiDtos.ApplicationRequest application(long courseId,UUID requestId) {
-        return new ApiDtos.ApplicationRequest("Teszt diák","student@example.test","+36301234567",null,null,true,courseId,requestId,0,null,true,false);
+        return new ApiDtos.ApplicationRequest("Teszt diák","student@example.test","+36301234567",null,null,true,courseId,requestId,0,null,true,false,AgeGroup.ADULT,false,false);
     }
     RegistrationDtos.InterestRequest interest(UUID id) { return new RegistrationDtos.InterestRequest("Teszt érdeklődő","preview@example.test",true,id); }
-    void accepted(long id) { registrations.update(id,new ApiDtos.ApplicationUpdate(ApplicationStatus.ACCEPTED,null),"test-admin"); }
+    void accepted(long id) { registrations.updateFinance(id,new RegistrationDtos.FinanceUpdate(true,280000,null,0),"test-admin"); registrations.update(id,new ApiDtos.ApplicationUpdate(ApplicationStatus.ACCEPTED,null),"test-admin"); }
+
+    @Test void minorRequiresGuardianAndNewAgeDeclaration() {
+        var missing=new ApiDtos.ApplicationRequest("Kiskorú","minor@example.test","123",null,null,true,1L,UUID.randomUUID(),0,null,false,false,AgeGroup.MINOR_14_17,false,false);
+        assertThatThrownBy(()->registrations.submit(missing)).isInstanceOf(ResponseStatusException.class);
+        var valid=new ApiDtos.ApplicationRequest("Kiskorú","parent@example.test","123","Teszt szülő",null,true,1L,UUID.randomUUID(),0,null,true,false,AgeGroup.MINOR_14_17,true,false);
+        var saved=registrations.submit(valid);
+        assertThat(saved.guardianConfirmed()).isTrue(); assertThat(saved.finance().laptopRentalFee()).isEqualTo(30000);
+        assertThat(registrations.submit(valid).id()).isEqualTo(saved.id());
+    }
+
+    @Test void waitlistHasFiveSlotsUnderConcurrentSubmissions() throws Exception {
+        jdbc.update("UPDATE courses SET capacity=1 WHERE id=1"); accepted(registrations.submit(application(1,UUID.randomUUID())).id());
+        try(var pool=Executors.newFixedThreadPool(8)) {
+            var jobs=new ArrayList<Callable<Boolean>>();
+            for(int i=0;i<12;i++) jobs.add(()-> {
+                var body=new ApiDtos.ApplicationRequest("Várólista","wait@example.test","123",null,null,true,1L,UUID.randomUUID(),0,null,false,false,AgeGroup.ADULT,false,true);
+                try { return registrations.submit(body).status()==ApplicationStatus.WAITLISTED; }
+                catch(ResponseStatusException e) { assertThat(e.getStatusCode().value()).isEqualTo(409); return false; }
+            });
+            int success=0; for(var result:pool.invokeAll(jobs)) if(result.get()) success++;
+            assertThat(success).isEqualTo(5);
+        }
+        assertThat(registrations.courses().getFirst().waitlistOpen()).isFalse();
+        assertThat(applications.countByCourseIdAndStatus(1L,ApplicationStatus.WAITLISTED)).isEqualTo(5);
+    }
+
+    @Test void paymentDeadlineRequiresFullAmountAndKeepsOriginalQuote() {
+        var a=registrations.submit(application(1,UUID.randomUUID()));
+        assertThatThrownBy(()->registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.ACCEPTED,null),"test")).isInstanceOf(ResponseStatusException.class);
+        var partial=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,21000,null,0),"test");
+        assertThat(partial.finance().periodDiscountPercent()).isZero(); assertThat(partial.finance().trainingTotal()).isEqualTo(280000);
+        assertThatThrownBy(()->registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,21000,LocalDate.of(2026,10,20),0),"test")).isInstanceOf(ResponseStatusException.class);
+        clock.set("2026-11-16T12:00:00Z");
+        var timely=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,210000,LocalDate.of(2026,11,15),0),"test");
+        assertThat(timely.finance().periodDiscountPercent()).isEqualTo(25);
+        var late=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,238000,LocalDate.of(2026,11,16),0),"test");
+        assertThat(late.finance().periodDiscountPercent()).isEqualTo(15);
+        assertThat(late.quotedTotal()).isEqualTo(210000); assertThat(late.createdAt()).isEqualTo(a.createdAt());
+        var friends=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,238000,LocalDate.of(2026,11,16),10),"test");
+        assertThat(friends.finance().discountPercent()).isEqualTo(35);
+    }
+
+    @Test void registrationClosesAfterTwoWeeksButRetrySurvives() {
+        clock.set("2027-01-23T22:59:59Z"); var body=application(1,UUID.randomUUID()); var a=registrations.submit(body);
+        clock.set("2027-01-23T23:00:00Z");
+        assertThat(registrations.courses().getFirst().registrationOpen()).isFalse();
+        assertThat(registrations.submit(body).id()).isEqualTo(a.id());
+        assertThatThrownBy(()->registrations.submit(application(1,UUID.randomUUID()))).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test void groupTransferNeedsSeatOrAcceptedSwapPartner() {
+        jdbc.update("UPDATE courses SET capacity=1");
+        var a=registrations.submit(application(1,UUID.randomUUID())); var b=registrations.submit(application(2,UUID.randomUUID())); accepted(a.id()); accepted(b.id());
+        assertThatThrownBy(()->registrations.transfer(a.id(),new RegistrationDtos.CourseTransfer(2L,null),"test")).isInstanceOf(ResponseStatusException.class);
+        var moved=registrations.transfer(a.id(),new RegistrationDtos.CourseTransfer(2L,b.id()),"test");
+        assertThat(moved.courseId()).isEqualTo(2); assertThat(moved.quotedTotal()).isEqualTo(a.quotedTotal());
+        assertThat(registrations.list(1L)).anyMatch(row->row.id().equals(b.id()));
+        assertThat(registrations.courses()).allMatch(c->c.acceptedCount()==1);
+    }
+
+    @Test void lessonsAndFileBytesRespectGroupAcceptanceAndExpiry() throws Exception {
+        var a=registrations.submit(application(1,UUID.randomUUID()));
+        var student=users.findByEmailIgnoreCase("diak@diku.local").orElseThrow();
+        assertThatThrownBy(()->enrollment.grant(student.id,new EnrollmentService.Grant(a.id()),"test")).isInstanceOf(ResponseStatusException.class);
+        accepted(a.id()); enrollment.grant(student.id,new EnrollmentService.Grant(a.id()),"test");
+        var own=platform.saveLesson(null,new ApiDtos.LessonRequest("Saját csoport","",null,null,true,1L),"test");
+        var other=platform.saveLesson(null,new ApiDtos.LessonRequest("Másik csoport","",null,null,true,2L),"test");
+        var upload=new org.springframework.mock.web.MockMultipartFile("file","minta.txt","text/plain","private bytes".getBytes());
+        var ownFile=files.upload(own.id(),upload,"test"); var otherFile=files.upload(other.id(),upload,"test");
+        assertThat(platform.listLessons(false,student.email)).extracting(ApiDtos.LessonDto::id).contains(own.id()).doesNotContain(other.id());
+        assertThat(Files.readString(files.download(ownFile.id(),student.email).path())).isEqualTo("private bytes");
+        assertThatThrownBy(()->files.download(otherFile.id(),student.email)).isInstanceOf(ResponseStatusException.class);
+        clock.set("2027-06-29T21:59:59Z"); assertThat(enrollment.access(student.email).active()).isTrue();
+        clock.set("2027-06-29T22:00:00Z"); assertThat(enrollment.access(student.email).active()).isFalse();
+        assertThat(platform.listLessons(false,student.email)).isEmpty();
+        assertThatThrownBy(()->files.download(ownFile.id(),student.email)).isInstanceOf(ResponseStatusException.class);
+        clock.set("2027-06-01T10:00:00Z"); registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.REJECTED,null),"test");
+        assertThatThrownBy(()->files.download(ownFile.id(),student.email)).isInstanceOf(ResponseStatusException.class);
+        files.deleteLesson(own.id(),"test"); files.deleteLesson(other.id(),"test");
+    }
 
     @Test void upgradePreservesLegacyApplicationsAndCreatesExactlyTwoGroups() throws Exception {
         mvc.perform(get("/api/courses")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
@@ -170,13 +255,13 @@ class RegistrationIntegrationTest {
         assertThat(late.periodDiscountPercent()).isZero(); assertThat(late.discountPercent()).isEqualTo(5);
         var mid=CoursePricing.price(280000,80,LocalDate.of(2026,12,15),1,false);
         assertThat(mid.discountPercent()).isEqualTo(20);
-        var body=new ApiDtos.ApplicationRequest("Teszt diák","test@example.test","123",null,null,true,1L,UUID.randomUUID(),0,"Meghívott egy barát",false,true);
+        var body=new ApiDtos.ApplicationRequest("Teszt diák","test@example.test","123",null,null,true,1L,UUID.randomUUID(),0,"Meghívott egy barát",false,true,AgeGroup.ADULT,false,false);
         var saved=registrations.submit(body);
         assertThat(saved.periodDiscountPercent()).isEqualTo(25); assertThat(saved.friendDiscountPercent()).isEqualTo(5);
         assertThat(saved.discountPercent()).isEqualTo(30); assertThat(saved.quotedTotal()).isEqualTo(196000);
         assertThat(saved.referredByFriend()).isTrue(); assertThat(saved.friendDiscountStatus()).isEqualTo("PENDING_ADMIN");
         assertThat(registrations.submit(body).id()).isEqualTo(saved.id());
-        var changed=new ApiDtos.ApplicationRequest(body.studentName(),body.email(),body.phone(),null,null,true,1L,body.requestId(),0,body.referralNote(),false,false);
+        var changed=new ApiDtos.ApplicationRequest(body.studentName(),body.email(),body.phone(),null,null,true,1L,body.requestId(),0,body.referralNote(),false,false,AgeGroup.ADULT,false,false);
         assertThatThrownBy(()->registrations.submit(changed)).isInstanceOf(ResponseStatusException.class);
     }
     @Test void manualInterestsAreDurableIdempotentAndOnlyAdminsCanManageThem() throws Exception {
