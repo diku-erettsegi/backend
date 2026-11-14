@@ -37,6 +37,8 @@ management:
     health:
       show-details: never
 diku:
+  retention:
+    cron: ${RETENTION_CRON:0 15 3 * * *}
   storage-path: ${STORAGE_PATH:./uploads}
   seed:
     admin-email: ${LOCAL_ADMIN_EMAIL:admin@diku.local}

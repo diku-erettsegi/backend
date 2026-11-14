@@ -27,8 +27,8 @@ final class RegistrationDtos {
     record InterestRequest(@NotBlank @Size(max=120) String name, @NotBlank @Email @Size(max=254) String email,
         @NotNull @AssertTrue Boolean privacyAccepted, @NotNull UUID requestId) {}
     record InterestUpdate(@NotNull InterestStatus status, @Size(max=4000) String notes) {}
-    record InterestDto(Long id, String name, String email, Instant createdAt, InterestStatus status, String notes, Instant updatedAt) {
-        static InterestDto of(ProgrammingInterest i) { return new InterestDto(i.id,i.name,i.email,i.createdAt,i.status,i.notes,i.updatedAt); }
+    record InterestDto(Long id, String name, String email, Instant createdAt, InterestStatus status, String notes, Instant updatedAt, Instant completedAt, Instant privacyAcceptedAt, String privacyVersion) {
+        static InterestDto of(ProgrammingInterest i) { return new InterestDto(i.id,i.name,i.email,i.createdAt,i.status,i.notes,i.updatedAt,i.completedAt,i.privacyAcceptedAt,i.privacyVersion); }
     }
     record InterestReceipt(Long id, String message) {
         static InterestReceipt of(InterestDto interest) {

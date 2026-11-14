@@ -28,10 +28,10 @@ public final class ApiDtos {
         String message, ApplicationStatus status, String notes, Instant createdAt, Instant privacyAcceptedAt, String privacyVersion,
         Long courseId, String courseName, int friendCount, String referralNote, boolean laptopRentalRequested, boolean referredByFriend,
         String friendDiscountStatus, Integer baseTotal, Integer discountPercent, Integer periodDiscountPercent, Integer friendDiscountPercent,
-        String discountLabel, Integer quotedTotal, Integer quotedPerLesson, AgeGroup ageGroup, boolean guardianConfirmed, FinancialSummary finance) {
+        String discountLabel, Integer quotedTotal, Integer quotedPerLesson, AgeGroup ageGroup, boolean guardianConfirmed, FinancialSummary finance, Instant closedAt) {
         static ApplicationDto of(Application a) { return new ApplicationDto(a.id,a.studentName,a.email,a.phone,a.parentName,a.message,a.status,a.notes,a.createdAt,a.privacyAcceptedAt,a.privacyVersion,
             a.course==null?null:a.course.getId(),a.course==null?null:a.course.getName(),a.friendCount,a.referralNote,a.laptopRentalRequested,a.referredByFriend,
-            a.friendCount>0||a.referredByFriend?"PENDING_ADMIN":"NOT_REQUESTED",a.baseTotal,a.discountPercent,a.periodDiscountPercent,a.friendDiscountPercent,a.discountLabel,a.quotedTotal,a.quotedPerLesson,a.ageGroup,a.guardianConfirmed,FinancialSummary.of(a)); }
+            a.friendCount>0||a.referredByFriend?"PENDING_ADMIN":"NOT_REQUESTED",a.baseTotal,a.discountPercent,a.periodDiscountPercent,a.friendDiscountPercent,a.discountLabel,a.quotedTotal,a.quotedPerLesson,a.ageGroup,a.guardianConfirmed,FinancialSummary.of(a),a.closedAt); }
     }
     public record LessonRequest(@NotBlank @Size(max=160) String title, @Size(max=6000) String description,
         LocalDateTime startsAt, @Size(max=2048) String meetingUrl, boolean published, @Positive Long courseId) {}

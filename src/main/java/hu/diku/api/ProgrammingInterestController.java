@@ -22,4 +22,6 @@ class ProgrammingInterestController {
     }
     @GetMapping("/admin/programming-interests") List<InterestDto> list() { return service.list(); }
     @PatchMapping("/admin/programming-interests/{id}") InterestDto update(@PathVariable long id,@Valid @RequestBody InterestUpdate body,Authentication auth) { return service.update(id,body,auth.getName()); }
+    @DeleteMapping("/admin/programming-interests/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    void delete(@PathVariable long id,Authentication auth) { service.delete(id,auth.getName()); }
 }

@@ -20,8 +20,9 @@ class RegistrationService {
     private final CoursePricing pricing;
     private final Clock clock;
     private final PlatformService platform;
-    RegistrationService(CourseRepository courses,ApplicationRepository applications,CoursePricing pricing,Clock clock,PlatformService platform) {
-        this.courses=courses; this.applications=applications; this.pricing=pricing; this.clock=clock; this.platform=platform;
+    private final AccountRepository users;
+    RegistrationService(CourseRepository courses,ApplicationRepository applications,CoursePricing pricing,Clock clock,PlatformService platform,AccountRepository users) {
+        this.courses=courses; this.applications=applications; this.pricing=pricing; this.clock=clock; this.platform=platform; this.users=users;
     }
     @Transactional(readOnly=true) List<CourseDto> courses() {
         return courses.findAllByOrderByStartTimeAsc().stream().map(c -> {
@@ -99,7 +100,7 @@ class RegistrationService {
         var a=applications.lockById(id).orElseThrow(PlatformService::missing);
         if(courseId!=null && !courseId.equals(a.course.getId())) throw conflict("A jelentkezés csoportja közben megváltozott. Töltsd újra az adatokat.");
         if(body.status()==ApplicationStatus.ACCEPTED && a.status!=ApplicationStatus.ACCEPTED) {
-            if(!a.contractConfirmed || a.paidTrainingTotal<=0) throw PlatformService.invalid("Elfogadás előtt igazold a szerződést és rögzítsd a befizetést.");
+            if(!hasRequiredAdvance(a)) throw PlatformService.invalid("Elfogadás előtt igazold az írásos szerződést és legalább az igazolt képzési díj 20%-ának befizetését.");
             if(course!=null) requireSeat(course);
         }
         if(body.status()==ApplicationStatus.WAITLISTED && a.status!=ApplicationStatus.WAITLISTED) {
@@ -107,6 +108,15 @@ class RegistrationService {
             requireWaitlistSeat(course);
         }
         if(a.status==ApplicationStatus.WAITLISTED && (body.status()==ApplicationStatus.NEW || body.status()==ApplicationStatus.CONTACTED) && course!=null) requireSeat(course);
+        boolean closed=body.status()==ApplicationStatus.REJECTED || body.status()==ApplicationStatus.WITHDRAWN;
+        if(closed && a.closedAt==null) a.closedAt=clock.instant();
+        else if(!closed) a.closedAt=null;
+        if(a.status!=body.status() && (a.status==ApplicationStatus.ACCEPTED || body.status()==ApplicationStatus.ACCEPTED)) {
+            users.lockByApplicationId(id).ifPresent(account -> {
+                account.accessEndedAt=body.status()==ApplicationStatus.ACCEPTED?null:clock.instant();
+                account.authVersion++;
+            });
+        }
         a.status=body.status(); a.notes=PlatformService.clean(body.notes());
         platform.audit(actor,"APPLICATION_UPDATED","application:"+id);
         return ApplicationDto.of(applications.saveAndFlush(a));
@@ -119,15 +129,21 @@ class RegistrationService {
         if(body.fullPaymentDate()!=null && (body.fullPaymentDate().isAfter(LocalDate.now(clock.withZone(CoursePricing.BUDAPEST)))
             || body.fullPaymentDate().isBefore(a.createdAt.atZone(CoursePricing.BUDAPEST).toLocalDate())))
             throw PlatformService.invalid("A teljes befizetés napja a jelentkezés és a mai nap közé essen.");
-        if(a.status==ApplicationStatus.ACCEPTED && (!body.contractConfirmed() || body.paidTrainingTotal()<=0))
-            throw PlatformService.invalid("Előbb vond vissza az elfogadott státuszt, utána a szerződés/befizetés igazolását.");
         a.contractConfirmed=body.contractConfirmed(); a.paidTrainingTotal=body.paidTrainingTotal();
         a.fullPaymentDate=body.fullPaymentDate(); a.verifiedFriendCount=body.verifiedFriendCount();
+        a.retentionProtected=a.retentionProtected || a.contractConfirmed || a.paidTrainingTotal>0;
+        if(a.status==ApplicationStatus.ACCEPTED && !hasRequiredAdvance(a))
+            throw PlatformService.invalid("Előbb vond vissza az elfogadott státuszt; elfogadott jelentkezésnél szerződés és legalább 20% igazolt befizetés szükséges.");
         var summary=FinancialSummary.of(a);
         if(a.fullPaymentDate!=null && (summary.trainingTotal()==null || a.paidTrainingTotal<summary.trainingTotal()))
             throw PlatformService.invalid("A teljes befizetés dátuma csak a kedvezményekkel számított teljes képzési díj beérkezésekor adható meg.");
         platform.audit(actor,"APPLICATION_FINANCE_UPDATED","application:"+id);
         return ApplicationDto.of(applications.saveAndFlush(a));
+    }
+    private static boolean hasRequiredAdvance(Application application) {
+        Integer advance=FinancialSummary.of(application).minimumAdvanceTotal();
+        return application.contractConfirmed && application.paidTrainingTotal>0
+            && (advance==null || application.paidTrainingTotal>=advance);
     }
     private void requireSeat(Course course) {
         if(applications.countByCourseIdAndStatus(course.id,ApplicationStatus.ACCEPTED)>=course.capacity)

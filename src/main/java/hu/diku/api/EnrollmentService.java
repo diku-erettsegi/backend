@@ -45,11 +45,12 @@ class EnrollmentService {
             throw PlatformService.invalid("Elfogadott jelentkezés és beállított kurzuszáró dátum szükséges.");
         if(users.findByApplicationId(a.id).filter(other->!other.id.equals(user.id)).isPresent())
             throw PlatformService.invalid("Ehhez a jelentkezéshez már tartozik tanulói fiók.");
-        user.application=a; user.authVersion++; record(actor,"ENROLLMENT_GRANTED",userId);
+        user.application=a; user.accessEndedAt=null; user.authVersion++; record(actor,"ENROLLMENT_GRANTED",userId);
         return dto(user);
     }
     @Transactional void revoke(long userId,String actor) {
         var user=users.lockById(userId).orElseThrow(PlatformService::missing);
+        if(user.application!=null && user.accessEndedAt==null) user.accessEndedAt=clock.instant();
         user.application=null; user.authVersion++; record(actor,"ENROLLMENT_REVOKED",userId);
     }
     private void record(String actor,String action,long id) {

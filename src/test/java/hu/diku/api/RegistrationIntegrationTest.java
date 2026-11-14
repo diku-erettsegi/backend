@@ -32,7 +32,7 @@ import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest
+@SpringBootTest(properties="diku.retention.cron=-")
 @AutoConfigureMockMvc @ActiveProfiles("local") @Testcontainers @Import(RegistrationIntegrationTest.TestTime.class)
 class RegistrationIntegrationTest {
     @Container static MariaDBContainer<?> db=new MariaDBContainer<>("mariadb:11.4");
@@ -40,7 +40,7 @@ class RegistrationIntegrationTest {
         // Rehearse a real V1 -> V2 upgrade, including a pre-existing application, before Spring applies V2.
         Flyway.configure().dataSource(db.getJdbcUrl(),db.getUsername(),db.getPassword()).target("1").load().migrate();
         try(var connection=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword()); var statement=connection.createStatement()) {
-            statement.executeUpdate("INSERT INTO applications(student_name,email,phone,status,privacy_accepted_at,privacy_version,created_at) VALUES ('Régi teszt jelentkezés','legacy@example.test','123','NEW','2026-10-17 10:00:00','draft-2026-10','2026-10-17 10:00:00')");
+            statement.executeUpdate("INSERT INTO applications(student_name,email,phone,status,privacy_accepted_at,privacy_version,created_at) VALUES ('Régi teszt jelentkezés','legacy@example.test','123','REJECTED','2026-10-17 10:00:00','draft-2026-10','2026-10-17 10:00:00')");
         }
         Flyway.configure().dataSource(db.getJdbcUrl(),db.getUsername(),db.getPassword()).target("2").load().migrate();
         try(var connection=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword()); var statement=connection.createStatement()) {
@@ -70,10 +70,15 @@ class RegistrationIntegrationTest {
     @Autowired AccountRepository users;
     @Autowired PlatformService platform;
     @Autowired FileService files;
+    @Autowired RetentionService retention;
+    @Autowired AuditRepository audit;
 
     @BeforeEach void resetState() {
-        jdbc.update("UPDATE users SET application_id=NULL");
+        jdbc.update("UPDATE users SET application_id=NULL,access_ended_at=NULL");
+        jdbc.update("DELETE FROM users WHERE email LIKE 'retention-%@example.test'");
         jdbc.update("DELETE FROM applications WHERE request_id IS NOT NULL");
+        // Migration fixtures are retained across test methods; production never runs this test-only preservation.
+        jdbc.update("UPDATE applications SET retention_protected=TRUE WHERE request_id IS NULL");
         jdbc.update("UPDATE courses SET capacity=24, registration_open=TRUE");
         jdbc.update("DELETE FROM mail_outbox"); jdbc.update("DELETE FROM programming_interests");
         clock.set("2026-10-20T10:00:00Z");
@@ -173,6 +178,8 @@ class RegistrationIntegrationTest {
         assertThat(legacy.courseId()).isNull(); assertThat(legacy.quotedTotal()).isNull();
         assertThat(legacy.createdAt()).isEqualTo(Instant.parse("2026-10-17T10:00:00Z"));
         assertThat(legacy.studentName()).isEqualTo("Régi teszt jelentkezés");
+        assertThat(legacy.privacyVersion()).isEqualTo("draft-2026-10");
+        assertThat(legacy.closedAt()).isAfter(legacy.createdAt());
         var previousQuote=registrations.list(2L).stream().filter(a->a.email().equals("v2@example.test")).findFirst().orElseThrow();
         assertThat(previousQuote.quotedTotal()).isEqualTo(210000); assertThat(previousQuote.discountPercent()).isEqualTo(25);
         assertThat(previousQuote.periodDiscountPercent()).isEqualTo(25); assertThat(previousQuote.friendDiscountPercent()).isZero();
@@ -298,5 +305,123 @@ class RegistrationIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM mail_outbox",Long.class)).isZero();
         assertThatThrownBy(()->interests.submit(new RegistrationDtos.InterestRequest("Más név",body.email(),true,body.requestId())))
             .isInstanceOf(ResponseStatusException.class).extracting(e->((ResponseStatusException)e).getStatusCode().value()).isEqualTo(409);
+    }
+
+    @Test void acceptanceRequiresTwentyPercentOfVerifiedPriceAndFinanceCannotBypassIt() {
+        var a=registrations.submit(application(1,UUID.randomUUID()));
+        assertThat(a.privacyVersion()).isEqualTo("launch-2026-11-13");
+        var finance=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,55999,null,0),"test");
+        assertThat(finance.finance().minimumAdvanceTotal()).isEqualTo(56000);
+        assertThatThrownBy(()->registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.ACCEPTED,null),"test")).isInstanceOf(ResponseStatusException.class);
+        registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,56000,null,0),"test");
+        registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.ACCEPTED,null),"test");
+        assertThatThrownBy(()->registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,55999,null,0),"test")).isInstanceOf(ResponseStatusException.class);
+        assertThat(applications.findById(a.id()).orElseThrow().paidTrainingTotal).isEqualTo(56000);
+        var discounted=registrations.submit(application(2,UUID.randomUUID()));
+        var discountedFinance=registrations.updateFinance(discounted.id(),new RegistrationDtos.FinanceUpdate(true,50400,null,2),"test");
+        assertThat(discountedFinance.finance().minimumAdvanceTotal()).isEqualTo(50400);
+        registrations.update(discounted.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.ACCEPTED,null),"test");
+    }
+
+    @Test void closedIntentRetentionUsesClosureTimeAndPreservesAnyHistoricalContractOrPayment() {
+        var removable=registrations.submit(application(1,UUID.randomUUID()));
+        var contractual=registrations.submit(application(1,UUID.randomUUID()));
+        var paid=registrations.submit(application(1,UUID.randomUUID()));
+        registrations.updateFinance(contractual.id(),new RegistrationDtos.FinanceUpdate(true,0,null,0),"test");
+        registrations.updateFinance(contractual.id(),new RegistrationDtos.FinanceUpdate(false,0,null,0),"test");
+        registrations.updateFinance(paid.id(),new RegistrationDtos.FinanceUpdate(false,1,null,0),"test");
+        registrations.updateFinance(paid.id(),new RegistrationDtos.FinanceUpdate(false,0,null,0),"test");
+        var closed=registrations.update(removable.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.WITHDRAWN,"Visszavonta"),"test");
+        registrations.update(contractual.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.REJECTED,null),"test");
+        registrations.update(paid.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.WITHDRAWN,null),"test");
+        clock.advance(Duration.ofDays(89));
+        var edited=registrations.update(removable.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.WITHDRAWN,"Megjegyzés javítása"),"test");
+        assertThat(edited.closedAt()).isEqualTo(closed.closedAt());
+        retention.cleanup(); assertThat(applications.existsById(removable.id())).isTrue();
+        clock.advance(Duration.ofDays(1));
+        assertThat(retention.cleanup().deletedApplications()).isEqualTo(1);
+        assertThat(applications.existsById(removable.id())).isFalse();
+        assertThat(applications.existsById(contractual.id())).isTrue(); assertThat(applications.existsById(paid.id())).isTrue();
+    }
+
+    @Test void reopeningAnIntentResetsItsClosureAndUnconfirmedIntentsCloseAfterCourseEnd() {
+        var a=registrations.submit(application(1,UUID.randomUUID()));
+        registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.REJECTED,null),"test");
+        clock.advance(Duration.ofDays(89));
+        var open=registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.CONTACTED,null),"test");
+        assertThat(open.closedAt()).isNull();
+        clock.set("2027-05-29T12:00:00Z"); retention.cleanup(); assertThat(applications.findById(a.id()).orElseThrow().status).isEqualTo(ApplicationStatus.CONTACTED);
+        clock.set("2027-05-30T12:00:00Z"); assertThat(retention.cleanup().closedApplications()).isEqualTo(1);
+        assertThat(applications.findById(a.id()).orElseThrow().closedAt).isEqualTo(clock.instant());
+        clock.advance(Duration.ofDays(90)); retention.cleanup(); assertThat(applications.existsById(a.id())).isFalse();
+    }
+
+    @Test void interestRetentionDeletesOldOpenRequestsAndCompletedRequestsAfterTheirOwnGracePeriod() {
+        var pending=interests.submit(interest(UUID.randomUUID()));
+        var completed=interests.submit(interest(UUID.randomUUID()));
+        assertThat(interestRepository.findById(pending.id()).orElseThrow().privacyVersion).isEqualTo("programming-preview-2026-11-13");
+        clock.advance(Duration.ofDays(10));
+        var closed=interests.update(completed.id(),new RegistrationDtos.InterestUpdate(InterestStatus.COMPLETED,"Link kézzel elküldve"),"test");
+        jdbc.update("INSERT INTO mail_outbox(interest_id,preview_url,next_attempt_at,created_at) VALUES (?, 'https://example.test/preview',NOW(),NOW())",completed.id());
+        clock.advance(Duration.ofDays(80));
+        assertThat(retention.cleanup().deletedInterests()).isEqualTo(1);
+        assertThat(interestRepository.existsById(pending.id())).isFalse();
+        assertThat(interests.update(completed.id(),new RegistrationDtos.InterestUpdate(InterestStatus.COMPLETED,"Korrigált megjegyzés"),"test").completedAt()).isEqualTo(closed.completedAt());
+        clock.advance(Duration.ofDays(10));
+        assertThat(retention.cleanup().deletedInterests()).isEqualTo(1);
+        assertThat(interestRepository.existsById(completed.id())).isFalse();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM mail_outbox",Long.class)).isZero();
+    }
+
+    @Test void expiredStudentAccountsAndOptionalNotesAreRemovedWithoutErasingFinancialRecords() throws Exception {
+        var a=registrations.submit(new ApiDtos.ApplicationRequest("Teszt diák","retention-student@example.test","123",null,"Személyes kérdés",true,1L,UUID.randomUUID(),0,"Ajánló neve",false,false,AgeGroup.ADULT,false,false));
+        accepted(a.id());
+        var student=platform.createUser(new ApiDtos.CreateUser("Teszt tanuló","retention-student@example.test","RetentionTest2026!",Role.STUDENT,true),"test");
+        enrollment.grant(student.id(),new EnrollmentService.Grant(a.id()),"test");
+        registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.ACCEPTED,"Tanulási megjegyzés"),"test");
+        var session=(org.springframework.mock.web.MockHttpSession)mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json").content("{\"email\":\"retention-student@example.test\",\"password\":\"RetentionTest2026!\"}"))
+            .andExpect(status().isOk()).andReturn().getRequest().getSession(false);
+        clock.set("2027-07-29T21:59:59Z"); retention.cleanup(); assertThat(users.existsById(student.id())).isTrue();
+        clock.set("2027-07-29T22:00:00Z");
+        var result=retention.cleanup(); assertThat(result.deletedAccounts()).isEqualTo(1); assertThat(result.clearedNotes()).isEqualTo(1);
+        assertThat(users.existsById(student.id())).isFalse();
+        mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isUnauthorized());
+        var kept=applications.findById(a.id()).orElseThrow(); assertThat(kept.contractConfirmed).isTrue(); assertThat(kept.paidTrainingTotal).isEqualTo(280000);
+        assertThat(kept.studentName).isEqualTo("Teszt diák"); assertThat(kept.quotedTotal).isEqualTo(210000);
+        assertThat(kept.message).isNull(); assertThat(kept.notes).isNull(); assertThat(kept.referralNote).isNull();
+        assertThat(users.findByEmailIgnoreCase("admin@diku.local")).isPresent();
+    }
+
+    @Test void revokedAccessIsDeletedAfterThirtyDaysButGrantingAgainCancelsDeletion() {
+        var a=registrations.submit(application(1,UUID.randomUUID())); accepted(a.id());
+        var student=platform.createUser(new ApiDtos.CreateUser("Visszavont tanuló","retention-revoked@example.test","RetentionTest2026!",Role.STUDENT,true),"test");
+        enrollment.grant(student.id(),new EnrollmentService.Grant(a.id()),"test"); enrollment.revoke(student.id(),"test");
+        clock.advance(Duration.ofDays(29)); retention.cleanup(); assertThat(users.existsById(student.id())).isTrue();
+        enrollment.grant(student.id(),new EnrollmentService.Grant(a.id()),"test");
+        clock.advance(Duration.ofDays(1)); retention.cleanup(); assertThat(users.existsById(student.id())).isTrue();
+        registrations.update(a.id(),new ApiDtos.ApplicationUpdate(ApplicationStatus.WITHDRAWN,null),"test");
+        clock.advance(Duration.ofDays(30)); retention.cleanup(); assertThat(users.existsById(student.id())).isFalse();
+        assertThat(applications.existsById(a.id())).isTrue();
+    }
+
+    @Test void auditEventsExpireAtThirtyDaysAndCleanupIsRepeatable() {
+        var old=new AuditEvent(); old.actor="retention-test"; old.action="TEST"; old.target="test:1"; old.createdAt=clock.instant().minus(Duration.ofDays(30)); audit.save(old);
+        var recent=new AuditEvent(); recent.actor="retention-test"; recent.action="TEST"; recent.target="test:2"; recent.createdAt=clock.instant().minus(Duration.ofDays(30)).plusSeconds(1); audit.save(recent);
+        retention.cleanup(); assertThat(audit.existsById(old.id)).isFalse(); assertThat(audit.existsById(recent.id)).isTrue();
+        var again=retention.cleanup(); assertThat(again.deletedAuditEvents()).isZero(); assertThat(again.deletedAccounts()).isZero(); assertThat(again.deletedApplications()).isZero();
+    }
+
+    @Test void interestConsentWithdrawalCanBeErasedImmediatelyOnlyByAdminWithCsrf() throws Exception {
+        var interest=interests.submit(interest(UUID.randomUUID()));
+        jdbc.update("INSERT INTO mail_outbox(interest_id,preview_url,next_attempt_at,created_at) VALUES (?, 'https://example.test/preview',NOW(),NOW())",interest.id());
+        String url="/api/admin/programming-interests/"+interest.id();
+        mvc.perform(delete(url).with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(delete(url).with(csrf()).with(user("student").roles("STUDENT"))).andExpect(status().isForbidden());
+        mvc.perform(delete(url).with(user("admin").roles("ADMIN"))).andExpect(status().isForbidden());
+        mvc.perform(delete(url).with(csrf()).with(user("admin").roles("ADMIN"))).andExpect(status().isNoContent());
+        assertThat(interestRepository.existsById(interest.id())).isFalse();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM mail_outbox",Long.class)).isZero();
+        assertThat(audit.findTop200ByOrderByCreatedAtDescIdDesc()).anyMatch(event->event.action.equals("PROGRAMMING_INTEREST_DELETED") && event.target.equals("interest:"+interest.id()));
+        mvc.perform(delete(url).with(csrf()).with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
     }
 }

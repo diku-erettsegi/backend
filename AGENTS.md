@@ -1,7 +1,9 @@
 # Backend agent útmutató
 
+- 2026-11-13: V5 launch privacy/retention. V1–V5 ne módosuljon, következő V6. API.md legfelső szakasz az irányadó: új WITHDRAWN, lezárási időpontok, legalább20% igazolt előleg, ADMIN+CSRF ízelítőtörlés, napi03:15Budapest RetentionService. Soha ne törölj szerződéses/pénzügyi jelentkezést a90napos szándékretentionnel; retentionProtected maradandó. Publicűrlap beküldési mezői változatlanok, verzió új rekordokra launch-2026-11-13/programming-preview-2026-11-13. Tests RETENTION_CRON=-, cleanupot kontrolláltórával hívják. Ütemezés visszaállításakor a technikai logok/mentések retentionje külön databasefeladat.
+
 - Olvasd: README.md, API.md és ../database/docs/HANDOFF.md, ARCHITECTURE.md, DECISIONS.md.
-- Java21 / Spring Boot3.5 / MariaDB11.4. A Flyway SQL itt a séma egyetlen forrása; V1/V2/V3/V4 migrációt ne írd át. A következő változás V5.
+- Java21 / Spring Boot3.5 / MariaDB11.4. A Flyway SQL itt a séma egyetlen forrása; V1/V2/V3/V4/V5 migrációt ne írd át. A következő változás V6.
 - JPA entitást ne adj közvetlenül API válaszként; használj DTO-t. Szerepkört a SecurityConfig, erőforrás-láthatóságot a szolgáltatás ellenőriz.
 - CSRF-et ne kapcsold ki. Ne válts localStorage JWT-re. Login után session/token rotáció maradjon meg.
 - A local seed nem mehet élesbe; valódi titkot, feltöltést, személyes adatot vagy logfájlt ne commitolj.

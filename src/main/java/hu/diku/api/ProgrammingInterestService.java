@@ -1,6 +1,7 @@
 package hu.diku.api;
 
 import static hu.diku.api.RegistrationDtos.*;
+import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,8 +19,9 @@ class ProgrammingInterestService {
     private final PlatformService platform;
     private final Clock clock;
     private final TransactionTemplate transaction;
-    ProgrammingInterestService(ProgrammingInterestRepository interests,PlatformService platform,Clock clock,PlatformTransactionManager manager) {
-        this.interests=interests; this.platform=platform; this.clock=clock;
+    private final EntityManager entityManager;
+    ProgrammingInterestService(ProgrammingInterestRepository interests,PlatformService platform,Clock clock,PlatformTransactionManager manager,EntityManager entityManager) {
+        this.interests=interests; this.platform=platform; this.clock=clock; this.entityManager=entityManager;
         transaction=new TransactionTemplate(manager); transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
     InterestDto submit(InterestRequest body) {
@@ -29,7 +31,7 @@ class ProgrammingInterestService {
                 var existing=interests.findByRequestId(body.requestId().toString());
                 if(existing.isPresent()) return existing(existing.get(),hash);
                 var i=new ProgrammingInterest(); i.name=body.name().strip(); i.email=PlatformService.email(body.email());
-                i.requestId=body.requestId().toString(); i.requestHash=hash; i.createdAt=clock.instant(); i.privacyAcceptedAt=i.createdAt; i.privacyVersion="programming-preview-draft-2026-10";
+                i.requestId=body.requestId().toString(); i.requestHash=hash; i.createdAt=clock.instant(); i.privacyAcceptedAt=i.createdAt; i.privacyVersion="programming-preview-2026-11-13";
                 i.updatedAt=i.createdAt;
                 interests.saveAndFlush(i);
                 platform.audit("public","PROGRAMMING_INTEREST_CREATED","interest:"+i.id);
@@ -51,8 +53,16 @@ class ProgrammingInterestService {
     @Transactional(readOnly=true) List<InterestDto> list() { return interests.findAllByOrderByCreatedAtDescIdDesc().stream().map(InterestDto::of).toList(); }
     @Transactional InterestDto update(long interestId,InterestUpdate body,String actor) {
         var interest=interests.lockById(interestId).orElseThrow(PlatformService::missing);
+        if(body.status()==InterestStatus.COMPLETED && interest.completedAt==null) interest.completedAt=clock.instant();
+        else if(body.status()!=InterestStatus.COMPLETED) interest.completedAt=null;
         interest.status=body.status(); interest.notes=PlatformService.clean(body.notes()); interest.updatedAt=clock.instant();
         platform.audit(actor,"PROGRAMMING_INTEREST_UPDATED","interest:"+interestId);
         return InterestDto.of(interests.save(interest));
+    }
+    @Transactional void delete(long interestId,String actor) {
+        var interest=interests.lockById(interestId).orElseThrow(PlatformService::missing);
+        entityManager.createNativeQuery("DELETE FROM mail_outbox WHERE interest_id=:id").setParameter("id",interestId).executeUpdate();
+        interests.delete(interest);
+        platform.audit(actor,"PROGRAMMING_INTEREST_DELETED","interest:"+interestId);
     }
 }

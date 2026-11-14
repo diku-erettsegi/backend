@@ -45,6 +45,7 @@ class ProgrammingInterest {
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) InterestStatus status=InterestStatus.NEW;
     @Column(columnDefinition="TEXT") String notes;
     @Column(nullable=false) Instant updatedAt;
+    Instant completedAt;
     Long getId() { return id; }
     String getEmail() { return email; }
     String getName() { return name; }

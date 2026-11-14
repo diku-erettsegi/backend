@@ -8,7 +8,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 enum Role { ADMIN, STUDENT }
-enum ApplicationStatus { NEW, CONTACTED, WAITLISTED, ACCEPTED, REJECTED }
+enum ApplicationStatus { NEW, CONTACTED, WAITLISTED, ACCEPTED, REJECTED, WITHDRAWN }
 enum AgeGroup { ADULT, MINOR_14_17 }
 
 @Entity @Table(name = "users")
@@ -22,6 +22,7 @@ class Account {
     @Column(nullable = false) long authVersion = 0;
     @Column(nullable = false) Instant createdAt = Instant.now();
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="application_id",unique=true) Application application;
+    Instant accessEndedAt;
 }
 
 @Entity @Table(name = "applications")
@@ -35,7 +36,7 @@ class Application {
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) ApplicationStatus status = ApplicationStatus.NEW;
     @Column(columnDefinition = "TEXT") String notes;
     @Column(nullable = false) Instant privacyAcceptedAt = Instant.now();
-    @Column(nullable = false, length = 40) String privacyVersion = "draft-2026-10";
+    @Column(nullable = false, length = 40) String privacyVersion = "launch-2026-11-13";
     @Column(nullable = false, updatable = false) Instant createdAt = Instant.now();
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="course_id") Course course;
     @Enumerated(EnumType.STRING) @Column(length=20,updatable=false) AgeGroup ageGroup;
@@ -59,6 +60,9 @@ class Application {
     @Column(nullable=false) int paidTrainingTotal;
     @JdbcTypeCode(SqlTypes.LOCAL_DATE) LocalDate fullPaymentDate;
     @Column(nullable=false) int verifiedFriendCount;
+    Instant closedAt;
+    // Once contractual/financial data exists, administrative corrections must not enable the 90-day purge.
+    @Column(nullable=false) boolean retentionProtected;
     Long getId() { return id; }
     Course getCourse() { return course; }
     ApplicationStatus getStatus() { return status; }

@@ -1,5 +1,17 @@
 # DIKU Spring Boot API
 
+## Jelentkezésindítás – 2026. november 13., V5
+
+Új jelentkezési tájékoztató-verzió és egyszeri ízelítőkérés-verzió; `WITHDRAWN` státusz és külön lezárási időpontok. Elfogadáshoz írásos szerződésigazolás és legalább az igazolt képzési díj 20%-ának befizetése kell. A teljes határidős befizetéshez kötött korai kedvezmény, a változatlan eredeti ársnapshot és a külön laptopdíj megmaradt. Az admin az érdeklődő hozzájárulásának visszavonásakor azonnali adattörlést tud indítani.
+
+A napi 03:15-ös budapesti adatmegőrzési feladat törli a lezárt, soha nem szerződött/fizetett jelentkezési szándékokat 90 nap után, az ízelítőket 90 nap után, a lejárt/visszavont tanulói hozzáférés fiókját 30 nap után és a műveleti napló 30 napnál régebbi sorait. A lezáratlan, el nem indult jelentkezési szándék a kurzus végén automatikusan lezárul; elintézetlen ízelítőkérés legfeljebb 90 napig marad. A lejárt kurzushoz tartozó opcionális szövegek is törlődnek, a szerződéses/pénzügyi rekordok megmaradnak. Az admin korábban rögzített szerződés/befizetés visszavonásával sem teszi automatikusan törölhetővé a pénzügyi bizonyítékot. A pontos határok, API mezők és a külön szervezői iratmegőrzés az [API.md](API.md) V5 szakaszában olvashatók.
+
+`RETENTION_CRON` alapértéke `0 15 3 * * *`; `-` letiltja az ütemezést (integrációs tesztekben használjuk). A V5 csak hozzáad mezőket és történeti lezárási/védőjelöléseket, a migráció maga nem töröl adatot. A régi V1–V4 migráció változatlan. A nyilvános POST szerződés kompatibilis, SMTP vagy automatikus számlázás nem került be.
+
+2026-11-14 ellenőrzés: Dockerben futó `mvn -q verify`, valódi Testcontainers MariaDB 11.4: **37 teszt, 0 hiba, 0 kihagyás** (11 ár-, 4 platform-, 22 regisztrációs/adatmegőrzési teszt). Az új esetek ellenőrzik a 20%-os küszöböt, visszamenőleges pénzügyi védelem megtartását, 90/30 napos határokat, újranyitást/újraengedélyezést, régi outbox törlését, a lejárt fiók sessionjének megszűnését és az admin ízelítőtörlés CSRF/szerepkör-védelmét. A korábbi Docker Desktop-megszakadás után egy visszavont, már jelentkezéshez nem kapcsolt fiók null projekciójának kezelése javítva; a teljes új futás sikeres. Éles aktiválás és teljes Compose-smoke állapota a közös HANDOFF/DEPLOY-STATUS dokumentumban követhető, nem ez a teszteredmény bizonyítja.
+
+Az alábbi dátumozott részek korábbi állapotokat írnak le; az új megőrzési és előlegszabályokat ez a V5 szakasz felülírja.
+
 ## Novemberi működés – V4
 
 Várólista (5 fő), kiskorú jelentkező szülői nyilatkozata, 20 dátumos szerkeszthető naptár, manuális szerződés/befizetés-igazolás, helycsere és csoporthoz kötött tananyag-hozzáférés. A tanuló csak saját elfogadott jelentkezésének csoportját láthatja a kurzus végét követő egy hónapig; közvetlen letöltés is ellenőrzött. Az eredeti díjajánlat változatlan; a teljes határidős befizetéshez és fizető barátokhoz kötött igazolt díj külön szerepel. API-részletek: API.md. A korábbi általános diákláthatóságot ez felülírja.

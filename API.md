@@ -1,5 +1,33 @@
 # API szerződés – csoportok, összevont kedvezmények és manuális érdeklődőkezelés
 
+## 2026-11-13 – jelentkezésindítás, V5
+
+Az admin ízelítő DTO a `privacyAcceptedAt` és `privacyVersion` mezőket is visszaadja; ezek az admin részletezőben megjelennek. A nyilvános beküldési válasz továbbra is csak a visszaigazolást tartalmazza.
+
+Ez a szakasz felülírja a korábbi pozitív befizetésre és piszkozat adatkezelési verzióra vonatkozó szabályokat. A meglévő nyilvános POST payloadok kompatibilisek; nincs online fizetés vagy levélküldés.
+
+- Új jelentkezés `privacyVersion`: `launch-2026-11-13`; új ízelítőkérés: `programming-preview-2026-11-13`. Meglévő rekord verziója és időpontjai nem változnak. Az alkalmazás mezője a tájékoztató megismerését, az ízelítőé a kért egyszeri megkeresés hozzájárulását rögzíti; nincs marketingfeliratkozás.
+- `Application.status` új értéke `WITHDRAWN` (visszavont), a státuszváltó PATCH ezt fogadja. Új admin DTO mező `closedAt: Instant|null`: első `REJECTED`/`WITHDRAWN` lezárás szerverideje. A lezárt rekord megjegyzésének módosítása nem tolja ki a határidőt; újranyitás nullázza.
+- `FinancialSummary.minimumAdvanceTotal: Integer|null`: az igazolt képzési díj 20%-a, egész forintra felfelé kerekítve. A laptopdíj külön marad. Új elfogadáshoz írásos szerződésigazolás, pozitív befizetés és legalább ez az összeg szükséges. A pénzügyi módosítás nem hagyhat elfogadott rekordot a küszöb alatt. Korábbi ismeretlen alapdíjú rekordnál a küszöb null, továbbra is kézzel igazolt szerződés és pozitív befizetés kell. A korai kedvezmény csak a teljes összeg határidős befizetésekor igazolható, az eredeti ajánlat nem változik.
+- `ProgrammingInterest.completedAt: Instant|null`: a lezárás első szerverideje, változatlan lezárt státusz melletti szerkesztés nem tolja ki; újranyitás nullázza. `COMPLETED` adminisztratív lezárást jelöl, nem bizonyít automatikus levélküldést.
+- Új `DELETE /api/admin/programming-interests/{id}`: ADMIN + CSRF, siker 204, hiányzó rekord 404. A hozzájárulás visszavonásakor azonnal törli az érdeklődő rekordját és az esetleges történeti outbox kapcsolódó sorát. A műveleti napló csak az admin azonosítóját, `PROGRAMMING_INTEREST_DELETED` műveletet és `interest:id` célt őriz, a törölt nevet/címet nem.
+
+### Automatikus adatmegőrzés
+
+A `RetentionService` napi **03:15 Europe/Budapest** időpontban fut. `RETENTION_CRON` felülírhatja; `-` teljesen letiltja, ezért ez élesben kizárólag tudatos üzemeltetési döntés lehet. Futás után csak darabszámok kerülnek technikai naplóba. Nincs publikus vagy admin „futtasd most” végpont. Az egyes rekordok külön tranzakcióban, újraellenőrzött állapot és a meglévő csoport → jelentkezés → fiók sorrendű sorzárak mellett módosulnak.
+
+| Adatkör | Szabály |
+| --- | --- |
+| Visszavont/elutasított, soha nem szerződött/fizetett jelentkezési szándék | `closedAt` után 90 nap, a következő napi futás törli. Kapcsolt fiók esetén nem töröl. |
+| Elmaradt, nyitott jelentkezési szándék | A kurzus vége után a NEW/CONTACTED/WAITLISTED rekordot lezárja (`REJECTED`, `APPLICATION_EXPIRED` audit), ha soha nem volt hozzá szerződés vagy befizetés. Innen indul a 90 nap. |
+| Szerződéses/pénzügyi jelentkezési adatok | **Nem** tartoznak a 90 napos automatikus törléshez. Bármely igazolt szerződés vagy pozitív befizetés maradandó belső védőjelölést állít; későbbi admin korrekció nem törli azt. A jogszabály szerinti törzsadat-, szerződés- és iratmegőrzés külön szervezői feladat. |
+| Ízelítőkérés | Lezárt: `completedAt` + 90 nap; nyitott: `createdAt` + 90 nap. Visszavonási kérelemnél admin DELETE azonnal, nem kell kivárni a határidőt. |
+| Tanulói fiók | Természetes hozzáférési időszak vége után 30 nap elteltével, vagy kifejezett hozzáférés-visszavonás/elfogadás-visszavonás után 30 nappal törlődik. Újbóli jogosultságadás megszünteti a visszavonás miatti törlési határidőt. Admin és soha hozzáféréssel nem rendelkező fiók nem törlődik automatikusan. |
+| Szabad jelentkezési szövegek | A kurzusvége + 1 hónap hozzáférés + 30 nap után `message`, `notes`, `referralNote` kiürül. Pénzügyi mezők, név/törzsadat és eredeti ársnapshot megmarad. A felület nem külön pedagógiai napló; szerződést/bizonylatot ne a szabad megjegyzésben tárolj. |
+| Admin műveleti napló | 30 nap; a biztonsági mentésekben lévő másolatokra a külön 30 napos mentéskezelés vonatkozik. |
+
+Az archivált szerződések, számlák, felnőttképzési nyilvántartások és jogi igények teljes életciklusát ez az alkalmazás nem kezeli. Kézi megőrzés és jogszerű törlés a szervező feladata. A V5 migráció nem töröl történeti adatot: ismeretlen régi lezárási időnél a migráció idejét rögzíti. Törölt rekord idempotenciakulcsa is törlődik; azonos kulcs megőrzési időn túli újraküldése új kérésnek számíthat. Visszaállítás után a megőrzési feladatot és időközbeni törlési kérelmeket is újra alkalmazni kell.
+
 ## 2026-11-03 – V4 szerződés (az alábbi októberi leírás módosításai)
 
 - Új jelentkezés: `ageGroup: ADULT | MINOR_14_17` kötelező. Kiskorúnál `parentName` és `guardianConfirmed:true` kell. `waitlistRequested:true` kifejezett várólista-kérés, csak betelt csoportnál kerül `WAITLISTED` állapotba. Korábbi azonos idempotens kérés az új mezők nélkül is visszaolvasható.

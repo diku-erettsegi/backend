@@ -22,7 +22,7 @@ import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("local") @Testcontainers
+@SpringBootTest(properties="diku.retention.cron=-") @AutoConfigureMockMvc @ActiveProfiles("local") @Testcontainers
 class PlatformIntegrationTest {
     @Container static MariaDBContainer<?> db=new MariaDBContainer<>("mariadb:11.4");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) throws Exception {
