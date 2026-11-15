@@ -3,6 +3,7 @@ package hu.diku.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -10,8 +11,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 class CoursePricingTest {
     @ParameterizedTest
     @CsvSource({
-        "2026-11-15T22:59:59Z,0,false,25,0,25,210000,2625",
-        "2026-11-15T23:00:00Z,0,false,15,0,15,238000,2975",
+        "2026-11-16T12:00:00Z,0,false,25,0,25,210000,2625",
+        "2026-11-25T22:59:59.999999999Z,0,false,25,0,25,210000,2625",
+        "2026-11-25T23:00:00Z,0,false,15,0,15,238000,2975",
         "2026-12-15T22:59:59Z,0,false,15,0,15,238000,2975",
         "2026-12-15T23:00:00Z,0,false,0,0,0,280000,3500",
         "2026-11-01T12:00:00Z,1,false,25,5,30,196000,2450",
@@ -30,5 +32,6 @@ class CoursePricingTest {
         assertThat(quote.friendDiscountPercent()).isEqualTo(friendPercent);
         assertThat(quote.discountPercent()).isEqualTo(totalPercent);
         assertThat(quote.total()).isEqualTo(total); assertThat(quote.perLesson()).isEqualTo(perLesson);
+        assertThat(quote.validUntil()).isEqualTo(period==25?LocalDate.of(2026,11,25):period==15?LocalDate.of(2026,12,15):null);
     }
 }

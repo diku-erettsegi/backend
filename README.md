@@ -1,5 +1,13 @@
 # DIKU Spring Boot API
 
+## Super Early Bird hosszabbítás – 2026. november 14.
+
+A 25%-os Super Early Bird határideje **2026. november 25. nap vége, Europe/Budapest**. November 26-tól december 15. nap végéig 15% Early Bird jár; december 16-tól nincs időszaki kedvezmény. A teljes kedvezményes képzési díjnak az adott határidőig be kell érkeznie. A baráti kedvezménnyel együtt változatlanul legfeljebb 35% adható.
+
+A `CoursePricing` közös szabályát használja a publikus ár és a külön igazolt pénzügyi összesítő. A korábban mentett ajánlat, időpont és idempotens ismétlés változatlan marad; az igazolt időszaki kedvezmény nem lépheti túl az eredeti ajánlatban szereplő százalékot. Nincs sémamódosítás vagy adatátírás. A korábbi dátumozott bejegyzések történeti állapotot írnak le.
+
+Ellenőrzés előkészítve: 12 árteszt, 4 platformteszt és 22 regisztrációs teszt. Az ártesztek az új budapesti éjfél előtti utolsó pillanatot és az éjféli váltást, az API-tesztek a `validUntil` értéket, az eredeti ajánlat/idempotencia megőrzését és a november 25-i/26-i teljes befizetést vizsgálják. `git diff --check` sikeres. A helyi Docker API 500 hibája miatt az új `mvn verify` még nem futott; a korábbi 37 sikeres teszt nem bizonyítja ezt a módosítást. A kiadási CI eredményével frissítendő.
+
 ## Jelentkezésindítás – 2026. november 13., V5
 
 Új jelentkezési tájékoztató-verzió és egyszeri ízelítőkérés-verzió; `WITHDRAWN` státusz és külön lezárási időpontok. Elfogadáshoz írásos szerződésigazolás és legalább az igazolt képzési díj 20%-ának befizetése kell. A teljes határidős befizetéshez kötött korai kedvezmény, a változatlan eredeti ársnapshot és a külön laptopdíj megmaradt. Az admin az érdeklődő hozzájárulásának visszavonásakor azonnali adattörlést tud indítani.
@@ -74,7 +82,7 @@ Az alkalmazás memóriaalapú, egy példányos korlátozása: legfeljebb 8 siker
 
 2027. január 9-én két szombati csoport indul: 09:00–13:00 és 14:00–18:00. Mindkettő 24 helyes, 20 alkalom × 4 darab 45 perces tanóra. A csoportok Flyway V2 migrációból kerülnek az adatbázisba, újraindulás nem állítja vissza őket. A 280000 Ft alapár 80 tanórára vonatkozik.
 
-A szerver Budapest szerinti dátuma adja a 25%-os (2026. november 15. nap végéig), majd 15%-os (december 15. nap végéig) időszaki kedvezményt. Ehhez barátonként 5 százalékpont adódik, összesen legfeljebb 35%. Meghívott barátként 5% jár akkor is, ha a jelentkező maga nem hoz másik barátot; ugyanazt a kapcsolatot nem számoljuk kétszer (`max(friendCount,referredByFriend?1:0)`). Példák: 25+5=30% → 196000 Ft, 25+10=35% → 182000 Ft. Az admin manuálisan ellenőrzi a baráti kapcsolatot. A szerver az időszaki/baráti/végső százalékot, árat és tanóraárat menti; későbbi státuszváltás vagy árváltozás nem írja át a snapshotot. Új jelentkezésnél a laptopigény 30000 Ft külön mentett díj a teljes képzésre; nem automatikus készletfoglalás.
+A szerver Budapest szerinti dátuma adja a 25%-os (2026. november 25. nap végéig), majd 15%-os (november 26-tól december 15. nap végéig) időszaki kedvezményt. Ehhez barátonként 5 százalékpont adódik, összesen legfeljebb 35%. Meghívott barátként 5% jár akkor is, ha a jelentkező maga nem hoz másik barátot; ugyanazt a kapcsolatot nem számoljuk kétszer (`max(friendCount,referredByFriend?1:0)`). Példák: 25+5=30% → 196000 Ft, 25+10=35% → 182000 Ft. Az admin manuálisan ellenőrzi a baráti kapcsolatot. A szerver az időszaki/baráti/végső százalékot, árat és tanóraárat menti; későbbi státuszváltás vagy árváltozás nem írja át a snapshotot. Új jelentkezésnél a laptopigény 30000 Ft külön mentett díj a teljes képzésre; nem automatikus készletfoglalás.
 
 Új jelentkezésnél kötelező csoportot választani. Csak `ACCEPTED` státusz foglal helyet; a 24 fős limitet párhuzamos adminműveletnél is tranzakciós csoportsorzár védi. Minden nyilvános beküldés UUID idempotenciakulcsot kér: változatlan kérés ismétlése ugyanazt az eredményt adja, megváltoztatott tartalom ugyanazzal a kulccsal 409. A régi csoport nélküli rekordok megmaradnak.
 

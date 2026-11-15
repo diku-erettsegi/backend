@@ -120,13 +120,17 @@ class RegistrationIntegrationTest {
         var partial=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,21000,null,0),"test");
         assertThat(partial.finance().periodDiscountPercent()).isZero(); assertThat(partial.finance().trainingTotal()).isEqualTo(280000);
         assertThatThrownBy(()->registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,21000,LocalDate.of(2026,10,20),0),"test")).isInstanceOf(ResponseStatusException.class);
-        clock.set("2026-11-16T12:00:00Z");
-        var timely=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,210000,LocalDate.of(2026,11,15),0),"test");
+        clock.set("2026-11-26T12:00:00Z");
+        assertThatThrownBy(()->registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,209999,LocalDate.of(2026,11,25),0),"test")).isInstanceOf(ResponseStatusException.class);
+        var timely=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,210000,LocalDate.of(2026,11,25),0),"test");
         assertThat(timely.finance().periodDiscountPercent()).isEqualTo(25);
-        var late=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,238000,LocalDate.of(2026,11,16),0),"test");
+        assertThat(timely.finance().trainingTotal()).isEqualTo(210000);
+        assertThatThrownBy(()->registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,210000,LocalDate.of(2026,11,26),0),"test")).isInstanceOf(ResponseStatusException.class);
+        var late=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,238000,LocalDate.of(2026,11,26),0),"test");
         assertThat(late.finance().periodDiscountPercent()).isEqualTo(15);
+        assertThat(late.finance().trainingTotal()).isEqualTo(238000);
         assertThat(late.quotedTotal()).isEqualTo(210000); assertThat(late.createdAt()).isEqualTo(a.createdAt());
-        var friends=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,238000,LocalDate.of(2026,11,16),10),"test");
+        var friends=registrations.updateFinance(a.id(),new RegistrationDtos.FinanceUpdate(true,238000,LocalDate.of(2026,11,26),10),"test");
         assertThat(friends.finance().discountPercent()).isEqualTo(35);
     }
 
@@ -185,11 +189,12 @@ class RegistrationIntegrationTest {
         assertThat(previousQuote.periodDiscountPercent()).isEqualTo(25); assertThat(previousQuote.friendDiscountPercent()).isZero();
     }
     @Test void pricesSwitchAtBudapestMidnightAndQuotesStayImmutable() throws Exception {
-        clock.set("2026-11-15T22:59:59Z");
+        clock.set("2026-11-25T22:59:59.999999Z");
+        mvc.perform(get("/api/courses")).andExpect(jsonPath("$[0].price.validUntil").value("2026-11-25"));
         var body=application(1L,UUID.randomUUID()); var saved=registrations.submit(body);
         assertThat(saved.discountPercent()).isEqualTo(25); assertThat(saved.quotedTotal()).isEqualTo(210000); assertThat(saved.quotedPerLesson()).isEqualTo(2625);
-        clock.set("2026-11-15T23:00:00Z");
-        mvc.perform(get("/api/courses")).andExpect(jsonPath("$[0].price.discountPercent").value(15)).andExpect(jsonPath("$[0].price.total").value(238000)).andExpect(jsonPath("$[0].price.perLesson").value(2975));
+        clock.set("2026-11-25T23:00:00Z");
+        mvc.perform(get("/api/courses")).andExpect(jsonPath("$[0].price.discountPercent").value(15)).andExpect(jsonPath("$[0].price.total").value(238000)).andExpect(jsonPath("$[0].price.perLesson").value(2975)).andExpect(jsonPath("$[0].price.validUntil").value("2026-12-15"));
         var again=registrations.submit(body); assertThat(again.id()).isEqualTo(saved.id()); assertThat(again.quotedTotal()).isEqualTo(210000);
         assertThat(again.createdAt()).isEqualTo(saved.createdAt());
         clock.set("2026-12-15T22:59:59Z"); assertThat(registrations.courses().getFirst().price().discountPercent()).isEqualTo(15);

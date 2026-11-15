@@ -28,7 +28,7 @@ class CoursePricing {
         return price(course.baseTotal,course.sessions*course.lessonsPerSession,createdAt.atZone(BUDAPEST).toLocalDate(),friendCount,referredByFriend);
     }
     static RegistrationDtos.PriceDto price(int baseTotal,int lessonCount,LocalDate today,int friendCount,boolean referredByFriend) {
-        LocalDate first=LocalDate.of(2026,11,15), second=LocalDate.of(2026,12,15);
+        LocalDate first=LocalDate.of(2026,11,25), second=LocalDate.of(2026,12,15);
         int periodPercent=!today.isAfter(first)?25:!today.isAfter(second)?15:0;
         int friendPercent=5*Math.max(friendCount,referredByFriend?1:0);
         int percent=Math.min(35,periodPercent+friendPercent);

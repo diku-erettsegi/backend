@@ -1,5 +1,7 @@
 # Backend agent útmutató
 
+- 2026-11-14: Super Early Bird 25% meghosszabbítva november 25. nap végéig (Europe/Budapest); 15% november 26.–december 15. A publikus ár és a teljes befizetés igazolása ugyanazt a CoursePricing szabályt használja. Régi ársnapshot/idempotens kérés nem írható át, migráció nem szükséges. README/API legfelső szakasz az irányadó.
+
 - 2026-11-13: V5 launch privacy/retention. V1–V5 ne módosuljon, következő V6. API.md legfelső szakasz az irányadó: új WITHDRAWN, lezárási időpontok, legalább20% igazolt előleg, ADMIN+CSRF ízelítőtörlés, napi03:15Budapest RetentionService. Soha ne törölj szerződéses/pénzügyi jelentkezést a90napos szándékretentionnel; retentionProtected maradandó. Publicűrlap beküldési mezői változatlanok, verzió új rekordokra launch-2026-11-13/programming-preview-2026-11-13. Tests RETENTION_CRON=-, cleanupot kontrolláltórával hívják. Ütemezés visszaállításakor a technikai logok/mentések retentionje külön databasefeladat.
 
 - Olvasd: README.md, API.md és ../database/docs/HANDOFF.md, ARCHITECTURE.md, DECISIONS.md.

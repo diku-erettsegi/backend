@@ -1,5 +1,11 @@
 # API szerződés – csoportok, összevont kedvezmények és manuális érdeklődőkezelés
 
+## 2026-11-14 – Super Early Bird határidő-hosszabbítás
+
+A 25%-os időszaki kedvezmény új utolsó napja **2026-11-25, Europe/Budapest**. A váltás UTC időpontja `2026-11-25T23:00:00Z`: ettől 15% az időszaki kedvezmény, `validUntil=2026-12-15`; előtte 25%, `validUntil=2026-11-25`. A 15%-os kedvezmény továbbra is december 15. nap végén jár le.
+
+Ugyanez a dátumszabály érvényes az admin által igazolt teljes befizetésre: barát nélkül 210000 Ft november 25-ig még 25%, november 26-án csak a teljes 238000 Ft mellett igazolható 15%. A részleges vagy határidőn túli befizetés önmagában nem igazolja a 25%-ot. A baráti komponens és a 35%-os plafon változatlan. A külön pénzügyi összesítő időszaki kedvezménye legfeljebb az eredeti ajánlatban szereplő százalék lehet; a mentett `quoted*`, kedvezmény- és időpontmezők, illetve UUID-idempotencia nem változnak. Nincs migráció, DTO- vagy végpontváltozás. Az alábbi dátumozott bejegyzések korábbi állapotot is tartalmaznak; a határidőben ez a szakasz az irányadó.
+
 ## 2026-11-13 – jelentkezésindítás, V5
 
 Az admin ízelítő DTO a `privacyAcceptedAt` és `privacyVersion` mezőket is visszaadja; ezek az admin részletezőben megjelennek. A nyilvános beküldési válasz továbbra is csak a visszaigazolást tartalmazza.
@@ -80,7 +86,7 @@ Minden új admin végpont ADMIN + CSRF védett. Nincs automatikus fizetés, szá
 
 **Course:** `{id,slug,name,startDate,startTime,endTime,sessions,lessonsPerSession,capacity,acceptedCount,availableSeats,registrationOpen,price}`. Két rögzített csoport: `szombat-delelott` (09:00–13:00), `szombat-delutan` (14:00–18:00). Kezdés `2027-01-09`, 20 alkalom × 4 tanóra = 80 tanóra, 45 perc/tanóra, 24 hely/csoport. Dátum `YYYY-MM-DD`, idő `HH:mm:ss`, Budapest helyi idő. Az id-t a lekérésből használd, ne a slugból számold.
 
-**Price:** `{baseTotal,discountPercent,periodDiscountPercent,friendDiscountPercent,discountLabel,total,perLesson,validUntil}`. Az összegek egész forintok, nem fillérek. Alap 280000 Ft / 80 = 3500 Ft/tanóra. A szerver Europe/Budapest dátuma szerint 2026-11-15 nap végéig 25%, 2026-12-15 nap végéig 15%, utána 0% az időszaki kedvezmény. A `validUntil` az aktuális időszak utolsó napja vagy null. A publikus csoportár 0 baráttal számol.
+**Price:** `{baseTotal,discountPercent,periodDiscountPercent,friendDiscountPercent,discountLabel,total,perLesson,validUntil}`. Az összegek egész forintok, nem fillérek. Alap 280000 Ft / 80 = 3500 Ft/tanóra. A szerver Europe/Budapest dátuma szerint 2026-11-25 nap végéig 25%, 2026-11-26 és 2026-12-15 között (mindkét napot beleértve) 15%, utána 0% az időszaki kedvezmény. A `validUntil` az aktuális időszak utolsó napja vagy null. A publikus csoportár 0 baráttal számol.
 
 A kedvezmények összeadódnak: `effectiveFriendCount=max(friendCount,referredByFriend?1:0)`, `friendDiscountPercent=5*effectiveFriendCount`, `discountPercent=min(35,periodDiscountPercent+friendDiscountPercent)`. A `friendDiscountPercent` a plafon előtti komponens; például tíz barátnál 50, miközben a végső kedvezmény legfeljebb 35. A meghívó és a meghívott is jogosult 5%-ra; a meghívottság jelölése nem számolja ugyanazt a barátot kétszer. Példák: 25+5=30% → 196000 Ft / 2450 Ft/tanóra; 25+10=35% → 182000 Ft / 2275 Ft/tanóra. A baráti kapcsolatokat az admin manuálisan ellenőrzi. A tárolt ár ezt a feltételes kedvezményt már tartalmazza, nem fizetési visszaigazolás.
 
